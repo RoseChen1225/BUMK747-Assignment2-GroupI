@@ -1,0 +1,48 @@
+# Check the packages
+library(dplyr)
+library(openxlsx) 
+library(lubridate)
+library(purrr)
+library(mltools)
+library(readr)
+library(stringr)
+library(psych)
+library(scales)
+
+# Import Data
+getwd()
+Users=read.csv("eSig User Raw-1.csv",stringsAsFactors=FALSE)
+Spend=read.csv("eSig Spend Raw-1.csv",stringsAsFactors=FALSE)
+
+# Clean Data
+Spend[,2:13]=as.numeric(apply(Spend[,2:13],2,function(x) gsub("[\\$,%]","",x)))
+
+# 1 Funnel By Month (Users)
+TAB_1=as.data.frame(Users %>% group_by(create_month) %>% summarise(
+  Created_Users = sum(count,na.rm=TRUE),
+  Activated_Users = sum(count[end_status=="1-activated"],na.rm=TRUE)+sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Pro_Upgrades =sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)))
+
+TAB_1$create_month = mdy(TAB_1$create_month)
+TAB_1 = TAB_1[order(TAB_1$create_month),]
+
+TAB_1$create_month=as.character(TAB_1$create_month)
+
+TAB_1=add_row(TAB_1,create_month="Total", Created_Users = sum(TAB_1_month$Created_Users),Activated_Users = sum(TAB_1_month$Activated_Users),Pro_Upgrades =sum(TAB_1_month$Pro_Upgrades))
+
+
+# 2 Funnel By Month (Conv%)
+TAB_2=as.data.frame(Users %>% group_by(create_month) %>% summarise(
+  Created_to_Activated = scales::percent((sum(count[end_status=="1-activated"],na.rm=TRUE)+sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE))/sum(count,na.rm=TRUE),0.01),
+  Activated_to_Pro = scales::percent(sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)/(sum(count[end_status=="1-activated"],na.rm=TRUE)+sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)),0.01),
+  Created_to_Pro =scales::percent(sum(count[end_status=="2-activated-upgraded"]/sum(count,na.rm=TRUE),na.rm=TRUE),0.01)))
+
+TAB_2$create_month = mdy(TAB_2$create_month)
+TAB_2 = TAB_2[order(TAB_2$create_month),]
+
+TAB_2$create_month=as.character(TAB_2$create_month)
+
+TAB_2=add_row(TAB_2,create_month="Total", 
+              Created_to_Activated =scales::percent( (sum(Users$count[Users$end_status=="1-activated"],na.rm=TRUE)+sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE))/sum(Users$count,na.rm=TRUE),0.01),
+              Activated_to_Pro = scales::percent(sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/(sum(Users$count[Users$end_status=="1-activated"],na.rm=TRUE)+sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)),0.01),
+              Created_to_Pro =scales::percent(sum(Users$count[Users$end_status=="2-activated-upgraded"]/sum(Users$count,na.rm=TRUE),na.rm=TRUE),0.01))
