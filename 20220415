@@ -1,0 +1,1587 @@
+# Check the packages
+library(dplyr)
+library(openxlsx) 
+library(lubridate)
+library(purrr)
+library(mltools)
+library(readr)
+library(stringr)
+library(psych)
+library(scales)
+library(do)
+
+# Import Data
+getwd()
+Users=read.csv("eSig User Raw-1.csv",stringsAsFactors=FALSE)
+Spend=read.csv("eSig Spend Raw-1.csv",stringsAsFactors=FALSE)
+
+# Clean data
+Spend_bak<-Spend #in case we mess it up
+Spend[,2:13]<-as.numeric(apply(Spend[,2:13],2,function(x) gsub("[\\$,%]","",x)))
+User_bak<-Users #in case we mess it up
+Users[,c(5:6,8:10)]<-as.numeric(apply(Users[,c(5:6,8:10)],2,function(x) gsub("[\\$,%]","",x)))
+
+# Fix Date
+Spend$Date <- mdy(Spend$Date)
+Users$create_month <- mdy(Users$create_month)
+Users$create_day <- mdy(Users$create_day)
+
+# 1 Funnel By Month (Users)
+TAB_1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created_Users = sum(count,na.rm=TRUE),
+  Activated_Users = sum(count[end_status=="1-activated"],na.rm=TRUE)+sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Pro_Upgrades =sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)))
+TAB_1 = TAB_1[order(TAB_1$Month),]
+TAB_1$Month = format(TAB_1$Month, format = "%b-%y")
+TAB_1[nrow(TAB_1)+ 1,1] = "TOTAL"
+TAB_1[nrow(TAB_1),2] = sum(Users$count,na.rm=TRUE)
+TAB_1[nrow(TAB_1),3]=sum(Users$count[Users$end_status=="1-activated"],na.rm=TRUE)+sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_1[nrow(TAB_1),4]=sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+
+# 2 Funnel By Month (Conv%)
+TAB_2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created_to_Activated = (sum(count[end_status=="1-activated"],na.rm=TRUE)+sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE))/sum(count,na.rm=TRUE),
+  Activated_to_Pro = sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)/(sum(count[end_status=="1-activated"],na.rm=TRUE)+sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)),
+  Created_to_Pro =sum(count[end_status=="2-activated-upgraded"]/sum(count,na.rm=TRUE),na.rm=TRUE)))
+TAB_2 = TAB_2[order(TAB_2$Month),]
+TAB_2$Month = format(TAB_2$Month, format = "%b-%y")
+TAB_2[nrow(TAB_2)+ 1,1] = "TOTAL"
+TAB_2[nrow(TAB_2),2] = (sum(Users$count[Users$end_status=="1-activated"],na.rm=TRUE)+sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE))/sum(Users$count,na.rm=TRUE)
+TAB_2[nrow(TAB_2),3]=sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/(sum(Users$count[Users$end_status=="1-activated"],na.rm=TRUE)+sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE))
+TAB_2[nrow(TAB_2),4]=sum(Users$count[Users$end_status=="2-activated-upgraded"]/sum(Users$count,na.rm=TRUE),na.rm=TRUE)
+TAB_2[2:4] <- sapply(TAB_2[2:4], function(x) percent(x,accuracy = 0.01))
+
+# 3 Funnel By Month (Cohorts)
+# TAB_3.1
+TAB_3.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count,na.rm=TRUE),
+  Month_1=sum(count[days_until_upgraded<30],na.rm=TRUE),
+  Month_2=sum(count[days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month_3=sum(count[days_until_upgraded>=60 & days_until_upgraded<90& Month < '2015-10-01'],na.rm=TRUE),
+  Month_4=sum(count[days_until_upgraded>=90 & days_until_upgraded<120& Month < '2015-09-01'],na.rm=TRUE),
+  Month_5=sum(count[days_until_upgraded>=120 & days_until_upgraded<150& Month < '2015-08-01'],na.rm=TRUE),
+  Month_6=sum(count[days_until_upgraded>=150 & days_until_upgraded<180& Month < '2015-07-01'],na.rm=TRUE),
+  Month_7=sum(count[days_until_upgraded>=180 & days_until_upgraded<210& Month < '2015-06-01'],na.rm=TRUE),
+  Month_8=sum(count[days_until_upgraded>=210 & days_until_upgraded<240& Month < '2015-05-01'],na.rm=TRUE),
+  Month_9=sum(count[days_until_upgraded>=240 & days_until_upgraded<270& Month < '2015-04-01'],na.rm=TRUE),
+  Month_10=sum(count[days_until_upgraded>=270 & days_until_upgraded<300& Month < '2015-03-01'],na.rm=TRUE)
+))
+TAB_3.1 = TAB_3.1[order(TAB_3.1$Month),]
+TAB_3.1$Month = format(TAB_3.1$Month, format = "%b-%y")
+TAB_3.1[2:10,12]=NA
+TAB_3.1[3:10,11]=NA
+TAB_3.1[4:10,10]=NA
+TAB_3.1[5:10,9]=NA
+TAB_3.1[6:10,8]=NA
+TAB_3.1[7:10,7]=NA
+TAB_3.1[8:10,6]=NA
+TAB_3.1[9:10,5]=NA
+TAB_3.1[10,4]=NA
+
+#TAB_3.2
+TAB_3.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month_1=(sum(count[days_until_upgraded<30],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_2=(sum(count[days_until_upgraded>=30 & days_until_upgraded<60& Month < '2015-11-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_3=(sum(count[days_until_upgraded>=60 & days_until_upgraded<90& Month < '2015-10-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_4=(sum(count[days_until_upgraded>=90 & days_until_upgraded<120& Month < '2015-09-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_5=(sum(count[days_until_upgraded>=120 & days_until_upgraded<150& Month < '2015-08-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_6=(sum(count[days_until_upgraded>=150 & days_until_upgraded<180& Month < '2015-07-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_7=(sum(count[days_until_upgraded>=180 & days_until_upgraded<210& Month < '2015-06-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_8=(sum(count[days_until_upgraded>=210 & days_until_upgraded<240& Month < '2015-05-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_9=(sum(count[days_until_upgraded>=240 & days_until_upgraded<270& Month < '2015-04-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_10=(sum(count[days_until_upgraded>=270 & days_until_upgraded<300& Month < '2015-03-01'],na.rm=TRUE)/sum(count,na.rm=TRUE))
+))
+TAB_3.2 = TAB_3.2[order(TAB_3.2$Month),]
+TAB_3.2$Month = format(TAB_3.2$Month, format = "%b-%y")
+TAB_3.2[nrow(TAB_3.2)+ 1,2] = mean(TAB_3.2$Month_1,na.rm=TRUE)
+TAB_3.2[nrow(TAB_3.2),3] = sum(TAB_3.2$Month_2,na.rm=TRUE)/9
+TAB_3.2[nrow(TAB_3.2),4] = sum(TAB_3.2$Month_3,na.rm=TRUE)/8
+TAB_3.2[nrow(TAB_3.2),5] = sum(TAB_3.2$Month_4,na.rm=TRUE)/7
+TAB_3.2[nrow(TAB_3.2),6] = sum(TAB_3.2$Month_5,na.rm=TRUE)/6
+TAB_3.2[nrow(TAB_3.2),7] = sum(TAB_3.2$Month_6,na.rm=TRUE)/5
+TAB_3.2[nrow(TAB_3.2),8] = sum(TAB_3.2$Month_7,na.rm=TRUE)/4
+TAB_3.2[nrow(TAB_3.2),9] = sum(TAB_3.2$Month_8,na.rm=TRUE)/3
+TAB_3.2[nrow(TAB_3.2),10] = sum(TAB_3.2$Month_9,na.rm=TRUE)/2
+TAB_3.2[nrow(TAB_3.2),11] = sum(TAB_3.2$Month_10,na.rm=TRUE)/1
+TAB_3.2[10,3:11]=NA
+TAB_3.2[9,4:11]=NA
+TAB_3.2[8,5:11]=NA
+TAB_3.2[7,6:11]=NA
+TAB_3.2[6,7:11]=NA
+TAB_3.2[5,8:11]=NA
+TAB_3.2[4,9:11]=NA
+TAB_3.2[3,10:11]=NA
+TAB_3.2[2,11]=NA
+TAB_3.2[nrow(TAB_3.2),1]="AVERAGE"
+
+#TAB_3.3
+TAB_3.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month_1=(sum(count[days_until_upgraded<30],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_2=(sum(count[days_until_upgraded<60& Month < '2015-11-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_3=(sum(count[days_until_upgraded<90& Month < '2015-10-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_4=(sum(count[days_until_upgraded<120& Month < '2015-09-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_5=(sum(count[days_until_upgraded<150& Month < '2015-08-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_6=(sum(count[days_until_upgraded<180& Month < '2015-07-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_7=(sum(count[days_until_upgraded<210& Month < '2015-06-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_8=(sum(count[days_until_upgraded<240& Month < '2015-05-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_9=(sum(count[days_until_upgraded<270& Month < '2015-04-01'],na.rm=TRUE)/sum(count,na.rm=TRUE)),
+  Month_10=(sum(count[days_until_upgraded<300& Month < '2015-03-01'],na.rm=TRUE)/sum(count,na.rm=TRUE))
+))
+TAB_3.3 = TAB_3.3[order(TAB_3.3$Month),]
+TAB_3.3$Month = format(TAB_3.3$Month, format = "%b-%y")
+TAB_3.3[10,3:11]=NA
+TAB_3.3[9,4:11]=NA
+TAB_3.3[8,5:11]=NA
+TAB_3.3[7,6:11]=NA
+TAB_3.3[6,7:11]=NA
+TAB_3.3[5,8:11]=NA
+TAB_3.3[4,9:11]=NA
+TAB_3.3[3,10:11]=NA
+TAB_3.3[2,11]=NA 
+TAB_3.3[nrow(TAB_3.3)+ 1,11]=TAB_3.2[11,11]+TAB_3.2[11,10]+TAB_3.2[11,9]+TAB_3.2[11,8]+TAB_3.2[11,7]+TAB_3.2[11,6]+TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),10]=TAB_3.2[11,10]+TAB_3.2[11,9]+TAB_3.2[11,8]+TAB_3.2[11,7]+TAB_3.2[11,6]+TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),9]=TAB_3.2[11,9]+TAB_3.2[11,8]+TAB_3.2[11,7]+TAB_3.2[11,6]+TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),8]=TAB_3.2[11,8]+TAB_3.2[11,7]+TAB_3.2[11,6]+TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),7]=TAB_3.2[11,7]+TAB_3.2[11,6]+TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),6]=TAB_3.2[11,6]+TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),5]=TAB_3.2[11,5]+TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),4]=TAB_3.2[11,4]+TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),3]=TAB_3.2[11,3]+TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),2]=TAB_3.2[11,2]
+TAB_3.3[nrow(TAB_3.3),1]="AVERAGE"
+TAB_3.2[2:11] <- sapply(TAB_3.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_3.3[2:11] <- sapply(TAB_3.3[2:11], function(x) percent(x,accuracy = 0.01))
+
+# 4 Funnel By Medium (Users)
+# TAB_4.1
+TAB_4.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  BLOG = sum(count[medium=="BLOG"],na.rm=TRUE),
+  CONTENT= sum(count[medium=="CONTENT"],na.rm=TRUE),
+  CPC= sum(count[medium=="CPC"],na.rm=TRUE),
+  DIRECT_TRAFFIC= sum(count[medium=="DIRECT_TRAFFIC"],na.rm=TRUE),
+  EMAIL_MARKETING= sum(count[medium=="EMAIL_MARKETING"],na.rm=TRUE),
+  IN_APP_NOTIFICATION= sum(count[medium=="IN_APP_NOTIFICATION"],na.rm=TRUE),
+  ORGANIC_SEARCH= sum(count[medium=="ORGANIC_SEARCH"],na.rm=TRUE),
+  OTHER= sum(count[medium=="OTHER"],na.rm=TRUE),
+  PAID= sum(count[medium=="PAID"],na.rm=TRUE),
+  REFERRALS= sum(count[medium=="REFERRALS"],na.rm=TRUE),
+  SHARE_LINK= sum(count[medium=="SHARE_LINK"],na.rm=TRUE),
+  SOCIAL_MEDIA= sum(count[medium=="SOCIAL_MEDIA"],na.rm=TRUE),
+  Grand_Total = sum(count,na.rm=TRUE)
+))
+TAB_4.1 = TAB_4.1[order(TAB_4.1$Month),]
+TAB_4.1$Month = format(TAB_4.1$Month, format = "%b-%y")
+TAB_4.1[nrow(TAB_4.1)+ 1,1] = "TOTAL"
+TAB_4.1[nrow(TAB_4.1),2] = sum(Users$count[Users$medium=="BLOG"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),3]=sum(Users$count[Users$medium=="CONTENT"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),4]=sum(Users$count[Users$medium=="CPC"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),5]=sum(Users$count[Users$medium=="DIRECT_TRAFFIC"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),6]=sum(Users$count[Users$medium=="EMAIL_MARKETING"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),7]= sum(Users$count[Users$medium=="IN_APP_NOTIFICATION"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),8]= sum(Users$count[Users$medium=="ORGANIC_SEARCH"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),9]= sum(Users$count[Users$medium=="OTHER"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),10]= sum(Users$count[Users$medium=="PAID"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),11]= sum(Users$count[Users$medium=="REFERRALS"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),12]= sum(Users$count[Users$medium=="SHARE_LINK"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),13]= sum(Users$count[Users$medium=="SOCIAL_MEDIA"],na.rm=TRUE)
+TAB_4.1[nrow(TAB_4.1),14]= sum(Users$count,na.rm=TRUE)
+
+# TAB_4.2
+TAB_4.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  BLOG = sum(count[medium=="BLOG" & end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="BLOG" & end_status=="1-activated"],na.rm=TRUE),
+  CONTENT= sum(count[medium=="CONTENT"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="CONTENT" & end_status=="1-activated"],na.rm=TRUE),
+  CPC= sum(count[medium=="CPC" & end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="CPC" & end_status=="1-activated"],na.rm=TRUE),
+  DIRECT_TRAFFIC= sum(count[medium=="DIRECT_TRAFFIC"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="DIRECT_TRAFFIC" & end_status=="1-activated"],na.rm=TRUE),
+  EMAIL_MARKETING= sum(count[medium=="EMAIL_MARKETING"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="EMAIL_MARKETING" & end_status=="1-activated"],na.rm=TRUE),
+  IN_APP_NOTIFICATION= sum(count[medium=="IN_APP_NOTIFICATION"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="IN_APP_NOTIFICATION" & end_status=="1-activated"],na.rm=TRUE),
+  ORGANIC_SEARCH= sum(count[medium=="ORGANIC_SEARCH"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="ORGANIC_SEARCH" & end_status=="1-activated"],na.rm=TRUE),
+  OTHER= sum(count[medium=="OTHER"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="OTHER" & end_status=="1-activated"],na.rm=TRUE),
+  PAID= sum(count[medium=="PAID"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="PAID" & end_status=="1-activated"],na.rm=TRUE),
+  REFERRALS= sum(count[medium=="REFERRALS"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="REFERRALS" & end_status=="1-activated"],na.rm=TRUE),
+  SHARE_LINK= sum(count[medium=="SHARE_LINK"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="SHARE_LINK" & end_status=="1-activated"],na.rm=TRUE),
+  SOCIAL_MEDIA= sum(count[medium=="SOCIAL_MEDIA"& end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[medium=="SOCIAL_MEDIA" & end_status=="1-activated"],na.rm=TRUE),
+  Grand_Total = sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(count[end_status=="1-activated"],na.rm=TRUE)
+))
+TAB_4.2 = TAB_4.2[order(TAB_4.2$Month),]
+TAB_4.2$Month = format(TAB_4.2$Month, format = "%b-%y")
+TAB_4.2[nrow(TAB_4.2)+ 1,1]="TOTAL"
+TAB_4.2[nrow(TAB_4.2),2]= sum(Users$count[Users$medium=="BLOG"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="BLOG"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),3]= sum(Users$count[Users$medium=="CONTENT"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="CONTENT"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),4]= sum(Users$count[Users$medium=="CPC"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="CPC"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),5]= sum(Users$count[Users$medium=="DIRECT_TRAFFIC"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="DIRECT_TRAFFIC"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),6]= sum(Users$count[Users$medium=="EMAIL_MARKETING"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="EMAIL_MARKETING"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),7]= sum(Users$count[Users$medium=="IN_APP_NOTIFICATION"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="IN_APP_NOTIFICATION"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),8]= sum(Users$count[Users$medium=="ORGANIC_SEARCH"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="ORGANIC_SEARCH"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),9]= sum(Users$count[Users$medium=="OTHER"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="OTHER"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),10]= sum(Users$count[Users$medium=="PAID"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),11]= sum(Users$count[Users$medium=="REFERRALS"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="REFERRALS"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),12]= sum(Users$count[Users$medium=="SHARE_LINK"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="SHARE_LINK"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),13]= sum(Users$count[Users$medium=="SOCIAL_MEDIA"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="SOCIAL_MEDIA"& Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_4.2[nrow(TAB_4.2),14]= sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$end_status=="1-activated"],na.rm=TRUE)
+
+# TAB_4.3
+TAB_4.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  BLOG = sum(count[medium=="BLOG" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  CONTENT= sum(count[medium=="CONTENT"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  CPC= sum(count[medium=="CPC" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  DIRECT_TRAFFIC= sum(count[medium=="DIRECT_TRAFFIC"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  EMAIL_MARKETING= sum(count[medium=="EMAIL_MARKETING"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  IN_APP_NOTIFICATION= sum(count[medium=="IN_APP_NOTIFICATION"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  ORGANIC_SEARCH= sum(count[medium=="ORGANIC_SEARCH"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  OTHER= sum(count[medium=="OTHER"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  PAID= sum(count[medium=="PAID"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  REFERRALS= sum(count[medium=="REFERRALS"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  SHARE_LINK= sum(count[medium=="SHARE_LINK"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  SOCIAL_MEDIA= sum(count[medium=="SOCIAL_MEDIA"& end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Grand_Total = sum(count[end_status=="2-activated-upgraded"],na.rm=TRUE)
+))
+TAB_4.3 = TAB_4.3[order(TAB_4.3$Month),]
+TAB_4.3$Month = format(TAB_4.3$Month, format = "%b-%y")
+TAB_4.3[nrow(TAB_4.3)+ 1,1]="TOTAL"
+TAB_4.3[nrow(TAB_4.3),2] = sum(Users$count[Users$medium=="BLOG"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),3] = sum(Users$count[Users$medium=="CONTENT"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),4] = sum(Users$count[Users$medium=="CPC"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),5] = sum(Users$count[Users$medium=="DIRECT_TRAFFIC"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),6] = sum(Users$count[Users$medium=="EMAIL_MARKETING"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),7] = sum(Users$count[Users$medium=="IN_APP_NOTIFICATION"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),8] = sum(Users$count[Users$medium=="ORGANIC_SEARCH"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),9] = sum(Users$count[Users$medium=="OTHER"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),10] = sum(Users$count[Users$medium=="PAID"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),11] = sum(Users$count[Users$medium=="REFERRALS"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),12] = sum(Users$count[Users$medium=="SHARE_LINK"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),13] = sum(Users$count[Users$medium=="SOCIAL_MEDIA"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_4.3[nrow(TAB_4.3),14]  = sum(Users$count[Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+
+# 5 Funnel By Medium (Conv%)
+# TAB_5.1
+TAB_5.1.1 <- Users %>% group_by(medium) %>% summarise(TOTAL = sum(count[ (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count))
+row1 <- c('Grand_Total',sum(Users$count[Users$end_status == '1-activated'|Users$end_status=='2-activated-upgraded'])/sum(Users$count))
+row2 <- c('create_month', 'TOTAL')
+TAB_5.1.1 <- rbind(row2,TAB_5.1.1, row1)
+TAB_5.1.1 <- t(TAB_5.1.1)
+colnames(TAB_5.1.1) <- TAB_5.1.1[1,]
+TAB_5.1.1 <- TAB_5.1.1[-1,]
+TAB_5.1.1 <- as.numeric(TAB_5.1.1)
+TAB_5.1.2 <- Users %>%group_by(create_month) %>% summarise(
+  BLOG = sum(count[medium=='BLOG'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='BLOG']),
+  CONTENT = sum(count[medium=='CONTENT'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='CONTENT']),
+  CPC =sum(count[medium=='CPC'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='CPC']),
+  DIRECT_TRAFFIC = sum(count[medium=='DIRECT_TRAFFIC'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='DIRECT_TRAFFIC']),
+  EMAIL_MARKETING = sum(count[medium=='EMAIL_MARKETING'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='EMAIL_MARKETING']),
+  IN_APP_NOTIFICATION = sum(count[medium=='IN_APP_NOTIFICATION'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='IN_APP_NOTIFICATION']),
+  ORGANIC_SEARCH =sum(count[medium=='ORGANIC_SEARCH'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='ORGANIC_SEARCH']),
+  OTHER = sum(count[medium=='OTHER'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='OTHER']),
+  PAID = sum(count[medium=='PAID'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='PAID']),
+  REFERRALS = sum(count[medium=='REFERRALS'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='REFERRALS']),
+  SHARE_LINK = sum(count[medium=='SHARE_LINK'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='SHARE_LINK']),
+  SOCIAL_MEDIA = sum(count[medium=='SOCIAL_MEDIA'& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count[medium=='SOCIAL_MEDIA']),
+  Grand_Total = sum(count[(medium=='BLOG'|medium=='CONTENT'|medium=='CPC'|medium=='DIRECT_TRAFFIC'|medium=='EMAIL_MARKETING'|medium=='IN_APP_NOTIFICATION'|medium=='ORGANIC_SEARCH'|medium=='OTHER'|medium=='PAID'|medium=='REFERRALS'|medium=='SHARE_LINK'|medium=='SOCIAL_MEDIA')& (end_status=='1-activated'|end_status=='2-activated-upgraded')])/sum(count))
+TAB_5.1 <- rbind(TAB_5.1.2,TAB_5.1.1)
+TAB_5.1[2:14] <- sapply(TAB_5.1[2:14], function(x) percent(x,accuracy = 0.01))
+TAB_5.1 <- rename(TAB_5.1, Month=create_month)
+TAB_5.1$Month = format(TAB_5.1$Month, format = "%b-%y")
+TAB_5.1$Month[11] <- 'TOTAL'
+
+# TAB_5.2
+TAB_5.2.1 <- Users %>% group_by(medium) %>% summarise(TOTAL = sum(count[end_status=='2-activated-upgraded'])/sum(count[end_status=='1-activated'|end_status=='2-activated-upgraded']))
+row3 <- c('Grand_Total',sum(Users$count[Users$end_status=='2-activated-upgraded'])/sum(Users$count[Users$end_status=='1-activated'|Users$end_status=='2-activated-upgraded']))
+row4 <- c('create_month', 'TOTAL')
+TAB_5.2.1 <- rbind(row4,TAB_5.2.1, row3)
+TAB_5.2.1 <- t(TAB_5.2.1)
+colnames(TAB_5.2.1) <- TAB_5.2.1[1,]
+TAB_5.2.1 <- TAB_5.2.1[-1,]
+TAB_5.2.1 <- as.numeric(TAB_5.2.1)
+TAB_5.2.2 <- Users %>%group_by(create_month) %>% summarise(
+  BLOG = sum(count[medium=='BLOG'& end_status=='2-activated-upgraded'])/sum(count[medium=='BLOG'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  CONTENT = sum(count[medium=='CONTENT'& end_status=='2-activated-upgraded'])/sum(count[medium=='CONTENT'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  CPC = sum(count[medium=='CPC'& end_status=='2-activated-upgraded'])/sum(count[medium=='CPC'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  DIRECT_TRAFFIC = sum(count[medium=='DIRECT_TRAFFIC'& end_status=='2-activated-upgraded'])/sum(count[medium=='DIRECT_TRAFFIC'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  EMAIL_MARKETING = sum(count[medium=='EMAIL_MARKETING'& end_status=='2-activated-upgraded'])/sum(count[medium=='EMAIL_MARKETING'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  IN_APP_NOTIFICATION = sum(count[medium=='IN_APP_NOTIFICATION'& end_status=='2-activated-upgraded'])/sum(count[medium=='IN_APP_NOTIFICATION'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  ORGANIC_SEARCH = sum(count[medium=='ORGANIC_SEARCH'& end_status=='2-activated-upgraded'])/sum(count[medium=='ORGANIC_SEARCH'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  OTHER = sum(count[medium=='OTHER'& end_status=='2-activated-upgraded'])/sum(count[medium=='OTHER'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  PAID = sum(count[medium=='PAID'& end_status=='2-activated-upgraded'])/sum(count[medium=='PAID'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  REFERRALS = sum(count[medium=='REFERRALS'& end_status=='2-activated-upgraded'])/sum(count[medium=='REFERRALS'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  SHARE_LINK = sum(count[medium=='SHARE_LINK'& end_status=='2-activated-upgraded'])/sum(count[medium=='SHARE_LINK'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  SOCIAL_MEDIA = sum(count[medium=='SOCIAL_MEDIA'& end_status=='2-activated-upgraded'])/sum(count[medium=='SOCIAL_MEDIA'& (end_status=='1-activated'|end_status=='2-activated-upgraded')]),
+  Grand_Total = sum(count[(medium=='BLOG'|medium=='CONTENT'|medium=='CPC'|medium=='DIRECT_TRAFFIC'|medium=='EMAIL_MARKETING'|medium=='IN_APP_NOTIFICATION'|medium=='ORGANIC_SEARCH'|medium=='OTHER'|medium=='PAID'|medium=='REFERRALS'|medium=='SHARE_LINK'|medium=='SOCIAL_MEDIA')& end_status=='2-activated-upgraded'])/sum(count[end_status=='1-activated'|end_status=='2-activated-upgraded']))
+TAB_5.2 <- rbind(TAB_5.2.2,TAB_5.2.1)
+TAB_5.2[2:14] <- sapply(TAB_5.2[2:14], function(x) percent(x,accuracy = 0.01))
+TAB_5.2 <- rename(TAB_5.2, Month=create_month)
+TAB_5.2$Month = format(TAB_5.2$Month, format = "%b-%y")
+TAB_5.2$Month[11] <- 'TOTAL'
+
+# TAB_5.3 
+TAB_5.3.1 <- Users %>% group_by(medium) %>% summarise(TOTAL = sum(count[end_status=='2-activated-upgraded'])/sum(count))
+row5 <- c('Grand_Total',sum(Users$count[Users$end_status=='2-activated-upgraded'])/sum(Users$count))
+row6 <- c('create_month', 'TOTAL')
+TAB_5.3.1 <- rbind(row2,TAB_5.3.1, row5)
+TAB_5.3.1 <- t(TAB_5.3.1)
+colnames(TAB_5.3.1) <- TAB_5.3.1[1,]
+TAB_5.3.1 <- TAB_5.3.1[-1,]
+TAB_5.3.1 <- as.numeric(TAB_5.3.1)
+TAB_5.3.2 <- Users %>%group_by(create_month) %>% summarise(
+  BLOG = sum(count[medium=='BLOG'& end_status=='2-activated-upgraded'])/sum(count[medium=='BLOG']),
+  CONTENT = sum(count[medium=='CONTENT'& end_status=='2-activated-upgraded'])/sum(count[medium=='CONTENT']),
+  CPC =sum(count[medium=='CPC'& end_status=='2-activated-upgraded'])/sum(count[medium=='CPC']),
+  DIRECT_TRAFFIC = sum(count[medium=='DIRECT_TRAFFIC'& end_status=='2-activated-upgraded'])/sum(count[medium=='DIRECT_TRAFFIC']),
+  EMAIL_MARKETING = sum(count[medium=='EMAIL_MARKETING'& end_status=='2-activated-upgraded'])/sum(count[medium=='EMAIL_MARKETING']),
+  IN_APP_NOTIFICATION = sum(count[medium=='IN_APP_NOTIFICATION'& end_status=='2-activated-upgraded'])/sum(count[medium=='IN_APP_NOTIFICATION']),
+  ORGANIC_SEARCH =sum(count[medium=='ORGANIC_SEARCH'& end_status=='2-activated-upgraded'])/sum(count[medium=='ORGANIC_SEARCH']),
+  OTHER = sum(count[medium=='OTHER'& end_status=='2-activated-upgraded'])/sum(count[medium=='OTHER']),
+  PAID = sum(count[medium=='PAID'& end_status=='2-activated-upgraded'])/sum(count[medium=='PAID']),
+  REFERRALS = sum(count[medium=='REFERRALS'& end_status=='2-activated-upgraded'])/sum(count[medium=='REFERRALS']),
+  SHARE_LINK = sum(count[medium=='SHARE_LINK'& end_status=='2-activated-upgraded'])/sum(count[medium=='SHARE_LINK']),
+  SOCIAL_MEDIA = sum(count[medium=='SOCIAL_MEDIA'& end_status=='2-activated-upgraded'])/sum(count[medium=='SOCIAL_MEDIA']),
+  Grand_Total = sum(count[(medium=='BLOG'|medium=='CONTENT'|medium=='CPC'|medium=='DIRECT_TRAFFIC'|medium=='EMAIL_MARKETING'|medium=='IN_APP_NOTIFICATION'|medium=='ORGANIC_SEARCH'|medium=='OTHER'|medium=='PAID'|medium=='REFERRALS'|medium=='SHARE_LINK'|medium=='SOCIAL_MEDIA')& end_status=='2-activated-upgraded'])/sum(count))
+TAB_5.3 <- rbind(TAB_5.3.2,TAB_5.3.1)
+TAB_5.3[2:14] <- sapply(TAB_5.3[2:14], function(x) percent(x,accuracy = 0.01))
+TAB_5.3 <- rename(TAB_5.3, Month=create_month)
+TAB_5.3$Month = format(TAB_5.1$Month, format = "%b-%y")
+TAB_5.3$Month[11] <- 'TOTAL'
+
+# 6 Funnel By Medium (Cohorts)
+# TAB_6.1.1
+TAB_6.1.1 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[ medium == "DIRECT_TRAFFIC"],na.rm=TRUE),
+  Month1 = sum(count[ medium == "DIRECT_TRAFFIC" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_6.1.1[10,4:12]=NA
+TAB_6.1.1[9,5:12]=NA
+TAB_6.1.1[8,6:12]=NA
+TAB_6.1.1[7,7:12]=NA
+TAB_6.1.1[6,8:12]=NA
+TAB_6.1.1[5,9:12]=NA
+TAB_6.1.1[4,10:12]=NA
+TAB_6.1.1[3,11:12]=NA
+TAB_6.1.1[2,12]=NA
+TAB_6.1.1$Month = format(TAB_6.1.1$Month, format = "%b-%y")
+
+# TAB_6.1.2
+TAB_6.1.2 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "DIRECT_TRAFFIC" & days_until_upgraded<30]/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01' ]/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+))
+TAB_6.1.2[nrow(TAB_6.1.2)+1,2] = mean(TAB_6.1.2$Month1,na.rm=TRUE)
+TAB_6.1.2[nrow(TAB_6.1.2),3] = sum(TAB_6.1.2$Month2,na.rm=TRUE)/9
+TAB_6.1.2[nrow(TAB_6.1.2),4] = sum(TAB_6.1.2$Month3,na.rm=TRUE)/8
+TAB_6.1.2[nrow(TAB_6.1.2),5] = sum(TAB_6.1.2$Month4,na.rm=TRUE)/7
+TAB_6.1.2[nrow(TAB_6.1.2),6] = sum(TAB_6.1.2$Month5,na.rm=TRUE)/6
+TAB_6.1.2[nrow(TAB_6.1.2),7] = sum(TAB_6.1.2$Month6,na.rm=TRUE)/5
+TAB_6.1.2[nrow(TAB_6.1.2),8] = sum(TAB_6.1.2$Month7,na.rm=TRUE)/4
+TAB_6.1.2[nrow(TAB_6.1.2),9] = sum(TAB_6.1.2$Month8,na.rm=TRUE)/3
+TAB_6.1.2[nrow(TAB_6.1.2),10] = sum(TAB_6.1.2$Month9,na.rm=TRUE)/2
+TAB_6.1.2[nrow(TAB_6.1.2),11] = sum(TAB_6.1.2$Month10,na.rm=TRUE)/1
+TAB_6.1.2[10,3:11]=NA
+TAB_6.1.2[9,4:11]=NA
+TAB_6.1.2[8,5:11]=NA
+TAB_6.1.2[7,6:11]=NA
+TAB_6.1.2[6,7:11]=NA
+TAB_6.1.2[5,8:11]=NA
+TAB_6.1.2[4,9:11]=NA
+TAB_6.1.2[3,10:11]=NA
+TAB_6.1.2[2,11]=NA
+
+# TAB_6.1.3
+TAB_6.1.3 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "DIRECT_TRAFFIC" & days_until_upgraded<30]/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<60 & Month < '2015-11-01' ]/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<120 & Month < '2015-09-01' ]/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "DIRECT_TRAFFIC" &   days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "DIRECT_TRAFFIC" &  days_until_upgraded<300 & Month < '2015-03-01']/sum(count[ medium == "DIRECT_TRAFFIC"]),na.rm=TRUE),
+))
+TAB_6.1.3[nrow(TAB_6.1.3)+ 1,2] = sum(TAB_6.1.2[11,2],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),3] = sum(TAB_6.1.2[11,2:3],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),4] = sum(TAB_6.1.2[11,2:4],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),5] = sum(TAB_6.1.2[11,2:5],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),6] = sum(TAB_6.1.2[11,2:6],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),7] = sum(TAB_6.1.2[11,2:7],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),8] = sum(TAB_6.1.2[11,2:8],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),9] = sum(TAB_6.1.2[11,2:9],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),10] = sum(TAB_6.1.2[11,2:10],na.rm=TRUE)
+TAB_6.1.3[nrow(TAB_6.1.3),11] = sum(TAB_6.1.2[11,2:11],na.rm=TRUE)
+TAB_6.1.3[10,3:11]=NA
+TAB_6.1.3[9,4:11]=NA
+TAB_6.1.3[8,5:11]=NA
+TAB_6.1.3[7,6:11]=NA
+TAB_6.1.3[6,7:11]=NA
+TAB_6.1.3[5,8:11]=NA
+TAB_6.1.3[4,9:11]=NA
+TAB_6.1.3[3,10:11]=NA
+TAB_6.1.3[2,11]=NA
+
+TAB_6.1.2[2:11] <- sapply(TAB_6.1.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.1.2$Month = format(TAB_6.1.2$Month, format = "%b-%y")
+TAB_6.1.2$Month[11] <- 'AVERAGE'
+TAB_6.1.3[2:11] <- sapply(TAB_6.1.3[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.1.3$Month = format(TAB_6.1.3$Month, format = "%b-%y")
+TAB_6.1.3$Month[11] <- 'AVERAGE'
+
+# TAB_6.2.1
+TAB_6.2.1 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[ medium == "EMAIL_MARKETING"],na.rm=TRUE),
+  Month1 = sum(count[ medium == "EMAIL_MARKETING" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_6.2.1[10,4:12]=NA
+TAB_6.2.1[9,5:12]=NA
+TAB_6.2.1[8,6:12]=NA
+TAB_6.2.1[7,7:12]=NA
+TAB_6.2.1[6,8:12]=NA
+TAB_6.2.1[5,9:12]=NA
+TAB_6.2.1[4,10:12]=NA
+TAB_6.2.1[3,11:12]=NA
+TAB_6.2.1[2,12]=NA
+TAB_6.2.1$Month = format(TAB_6.2.1$Month, format = "%b-%y")
+
+# TAB_6.2.2
+TAB_6.2.2 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "EMAIL_MARKETING" & days_until_upgraded<30]/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+))
+TAB_6.2.2[nrow(TAB_6.2.2)+ 1,2] = mean(TAB_6.2.2$Month1,na.rm=TRUE)
+TAB_6.2.2[nrow(TAB_6.2.2),3] = sum(TAB_6.2.2$Month2,na.rm=TRUE)/9
+TAB_6.2.2[nrow(TAB_6.2.2),4] = sum(TAB_6.2.2$Month3,na.rm=TRUE)/8
+TAB_6.2.2[nrow(TAB_6.2.2),5] = sum(TAB_6.2.2$Month4,na.rm=TRUE)/7
+TAB_6.2.2[nrow(TAB_6.2.2),6] = sum(TAB_6.2.2$Month5,na.rm=TRUE)/6
+TAB_6.2.2[nrow(TAB_6.2.2),7] = sum(TAB_6.2.2$Month6,na.rm=TRUE)/5
+TAB_6.2.2[nrow(TAB_6.2.2),8] = sum(TAB_6.2.2$Month7,na.rm=TRUE)/4
+TAB_6.2.2[nrow(TAB_6.2.2),9] = sum(TAB_6.2.2$Month8,na.rm=TRUE)/3
+TAB_6.2.2[nrow(TAB_6.2.2),10] = sum(TAB_6.2.2$Month9,na.rm=TRUE)/2
+TAB_6.2.2[nrow(TAB_6.2.2),11] = sum(TAB_6.2.2$Month10,na.rm=TRUE)/1
+TAB_6.2.2[10,3:11]=NA
+TAB_6.2.2[9,4:11]=NA
+TAB_6.2.2[8,5:11]=NA
+TAB_6.2.2[7,6:11]=NA
+TAB_6.2.2[6,7:11]=NA
+TAB_6.2.2[5,8:11]=NA
+TAB_6.2.2[4,9:11]=NA
+TAB_6.2.2[3,10:11]=NA
+TAB_6.2.2[2,11]=NA
+
+# TAB_6.2.3
+TAB_6.2.3 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "EMAIL_MARKETING" & days_until_upgraded<30]/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<60 & Month < '2015-11-01' ]/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<120 & Month < '2015-09-01' ]/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "EMAIL_MARKETING" &   days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "EMAIL_MARKETING" &  days_until_upgraded<300 & Month < '2015-03-01']/sum(count[ medium == "EMAIL_MARKETING"]),na.rm=TRUE),
+))
+TAB_6.2.3[nrow(TAB_6.2.3)+ 1,2] = sum(TAB_6.2.2[11,2],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),3] = sum(TAB_6.2.2[11,2:3],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),4] = sum(TAB_6.2.2[11,2:4],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),5] = sum(TAB_6.2.2[11,2:5],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),6] = sum(TAB_6.2.2[11,2:6],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),7] = sum(TAB_6.2.2[11,2:7],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),8] = sum(TAB_6.2.2[11,2:8],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),9] = sum(TAB_6.2.2[11,2:9],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),10] = sum(TAB_6.2.2[11,2:10],na.rm=TRUE)
+TAB_6.2.3[nrow(TAB_6.2.3),11] = sum(TAB_6.2.2[11,2:11],na.rm=TRUE)
+TAB_6.2.3[10,3:11]=NA
+TAB_6.2.3[9,4:11]=NA
+TAB_6.2.3[8,5:11]=NA
+TAB_6.2.3[7,6:11]=NA
+TAB_6.2.3[6,7:11]=NA
+TAB_6.2.3[5,8:11]=NA
+TAB_6.2.3[4,9:11]=NA
+TAB_6.2.3[3,10:11]=NA
+TAB_6.2.3[2,11]=NA
+
+TAB_6.2.2[2:11] <- sapply(TAB_6.2.2[2:11], function(x) percent(x,accuracy = 0.01)) 
+TAB_6.2.2$Month = format(TAB_6.2.2$Month, format = "%b-%y")
+TAB_6.2.2$Month[11] <- 'AVERAGE'
+TAB_6.2.3[2:11] <- sapply(TAB_6.2.3[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.2.3$Month = format(TAB_6.2.3$Month, format = "%b-%y")
+TAB_6.2.3$Month[11] <- 'AVERAGE'
+
+# TAB_6.3.1
+TAB_6.3.1 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[ medium == "ORGANIC_SEARCH"],na.rm=TRUE),
+  Month1 = sum(count[ medium == "ORGANIC_SEARCH" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_6.3.1[10,4:12]=NA
+TAB_6.3.1[9,5:12]=NA
+TAB_6.3.1[8,6:12]=NA
+TAB_6.3.1[7,7:12]=NA
+TAB_6.3.1[6,8:12]=NA
+TAB_6.3.1[5,9:12]=NA
+TAB_6.3.1[4,10:12]=NA
+TAB_6.3.1[3,11:12]=NA
+TAB_6.3.1[2,12]=NA
+TAB_6.3.1$Month = format(TAB_6.3.1$Month, format = "%b-%y")
+
+# TAB_6.3.2
+TAB_6.3.2 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "ORGANIC_SEARCH" & days_until_upgraded<30]/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+))
+TAB_6.3.2[nrow(TAB_6.3.2)+ 1,2] = mean(TAB_6.3.2$Month1,na.rm=TRUE)
+TAB_6.3.2[nrow(TAB_6.3.2),3] = sum(TAB_6.3.2$Month2,na.rm=TRUE)/9
+TAB_6.3.2[nrow(TAB_6.3.2),4] = sum(TAB_6.3.2$Month3,na.rm=TRUE)/8
+TAB_6.3.2[nrow(TAB_6.3.2),5] = sum(TAB_6.3.2$Month4,na.rm=TRUE)/7
+TAB_6.3.2[nrow(TAB_6.3.2),6] = sum(TAB_6.3.2$Month5,na.rm=TRUE)/6
+TAB_6.3.2[nrow(TAB_6.3.2),7] = sum(TAB_6.3.2$Month6,na.rm=TRUE)/5
+TAB_6.3.2[nrow(TAB_6.3.2),8] = sum(TAB_6.3.2$Month7,na.rm=TRUE)/4
+TAB_6.3.2[nrow(TAB_6.3.2),9] = sum(TAB_6.3.2$Month8,na.rm=TRUE)/3
+TAB_6.3.2[nrow(TAB_6.3.2),10] = sum(TAB_6.3.2$Month9,na.rm=TRUE)/2
+TAB_6.3.2[nrow(TAB_6.3.2),11] = sum(TAB_6.3.2$Month10,na.rm=TRUE)/1
+TAB_6.3.2[10,3:11]=NA
+TAB_6.3.2[9,4:11]=NA
+TAB_6.3.2[8,5:11]=NA
+TAB_6.3.2[7,6:11]=NA
+TAB_6.3.2[6,7:11]=NA
+TAB_6.3.2[5,8:11]=NA
+TAB_6.3.2[4,9:11]=NA
+TAB_6.3.2[3,10:11]=NA
+TAB_6.3.2[2,11]=NA
+
+# TAB_6.3.3
+TAB_6.3.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "ORGANIC_SEARCH" & days_until_upgraded<30]/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<60 & Month < '2015-11-01' ]/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<120 & Month < '2015-09-01' ]/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "ORGANIC_SEARCH" &   days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "ORGANIC_SEARCH" &  days_until_upgraded<300 & Month < '2015-03-01']/sum(count[ medium == "ORGANIC_SEARCH"]),na.rm=TRUE),
+))
+TAB_6.3.3[nrow(TAB_6.3.3)+ 1,2] = sum(TAB_6.3.2[11,2],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),3] = sum(TAB_6.3.2[11,2:3],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),4] = sum(TAB_6.3.2[11,2:4],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),5] = sum(TAB_6.3.2[11,2:5],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),6] = sum(TAB_6.3.2[11,2:6],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),7] = sum(TAB_6.3.2[11,2:7],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),8] = sum(TAB_6.3.2[11,2:8],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),9] = sum(TAB_6.3.2[11,2:9],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),10] = sum(TAB_6.3.2[11,2:10],na.rm=TRUE)
+TAB_6.3.3[nrow(TAB_6.3.3),11] = sum(TAB_6.3.2[11,2:11],na.rm=TRUE)
+TAB_6.3.3[10,3:11]=NA
+TAB_6.3.3[9,4:11]=NA
+TAB_6.3.3[8,5:11]=NA
+TAB_6.3.3[7,6:11]=NA
+TAB_6.3.3[6,7:11]=NA
+TAB_6.3.3[5,8:11]=NA
+TAB_6.3.3[4,9:11]=NA
+TAB_6.3.3[3,10:11]=NA
+TAB_6.3.3[2,11]=NA
+
+TAB_6.3.2[2:11] <- sapply(TAB_6.3.2[2:11], function(x) percent(x,accuracy = 0.01)) 
+TAB_6.3.2$Month = format(TAB_6.3.2$Month, format = "%b-%y")
+TAB_6.3.2$Month[11] <- 'AVERAGE'
+TAB_6.3.3[2:11] <- sapply(TAB_6.3.3[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.3.3$Month = format(TAB_6.3.3$Month, format = "%b-%y")
+TAB_6.3.3$Month[11] <- 'AVERAGE'
+
+# TAB_6.4.1
+TAB_6.4.1 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[ medium == "PAID"],na.rm=TRUE),
+  Month1 = sum(count[ medium == "PAID" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[ medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[ medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[ medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[ medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[ medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[ medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[ medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[ medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[ medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_6.4.1[10,4:12]=NA
+TAB_6.4.1[9,5:12]=NA
+TAB_6.4.1[8,6:12]=NA
+TAB_6.4.1[7,7:12]=NA
+TAB_6.4.1[6,8:12]=NA
+TAB_6.4.1[5,9:12]=NA
+TAB_6.4.1[4,10:12]=NA
+TAB_6.4.1[3,11:12]=NA
+TAB_6.4.1[2,12]=NA
+TAB_6.4.1$Month = format(TAB_6.4.1$Month, format = "%b-%y")
+
+# TAB_6.4.2
+TAB_6.4.2 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "PAID" & days_until_upgraded<30]/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+))
+TAB_6.4.2[nrow(TAB_6.4.2)+ 1,2] = mean(TAB_6.4.2$Month1,na.rm=TRUE)
+TAB_6.4.2[nrow(TAB_6.4.2),3] = sum(TAB_6.4.2$Month2,na.rm=TRUE)/9
+TAB_6.4.2[nrow(TAB_6.4.2),4] = sum(TAB_6.4.2$Month3,na.rm=TRUE)/8
+TAB_6.4.2[nrow(TAB_6.4.2),5] = sum(TAB_6.4.2$Month4,na.rm=TRUE)/7
+TAB_6.4.2[nrow(TAB_6.4.2),6] = sum(TAB_6.4.2$Month5,na.rm=TRUE)/6
+TAB_6.4.2[nrow(TAB_6.4.2),7] = sum(TAB_6.4.2$Month6,na.rm=TRUE)/5
+TAB_6.4.2[nrow(TAB_6.4.2),8] = sum(TAB_6.4.2$Month7,na.rm=TRUE)/4
+TAB_6.4.2[nrow(TAB_6.4.2),9] = sum(TAB_6.4.2$Month8,na.rm=TRUE)/3
+TAB_6.4.2[nrow(TAB_6.4.2),10] = sum(TAB_6.4.2$Month9,na.rm=TRUE)/2
+TAB_6.4.2[nrow(TAB_6.4.2),11] = sum(TAB_6.4.2$Month10,na.rm=TRUE)/1
+TAB_6.4.2[10,3:11]=NA
+TAB_6.4.2[9,4:11]=NA
+TAB_6.4.2[8,5:11]=NA
+TAB_6.4.2[7,6:11]=NA
+TAB_6.4.2[6,7:11]=NA
+TAB_6.4.2[5,8:11]=NA
+TAB_6.4.2[4,9:11]=NA
+TAB_6.4.2[3,10:11]=NA
+TAB_6.4.2[2,11]=NA
+
+# TAB_6.4.3
+TAB_6.4.3 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "PAID" & days_until_upgraded<30]/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "PAID" &   days_until_upgraded<60 & Month < '2015-11-01' ]/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "PAID" &   days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "PAID" &   days_until_upgraded<120 & Month < '2015-09-01' ]/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "PAID" &   days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "PAID" &   days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "PAID" &   days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "PAID" &   days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "PAID" &   days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "PAID" &  days_until_upgraded<300 & Month < '2015-03-01']/sum(count[ medium == "PAID"]),na.rm=TRUE),
+))
+TAB_6.4.3[nrow(TAB_6.4.3)+ 1,2] = sum(TAB_6.4.2[11,2],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),3] = sum(TAB_6.4.2[11,2:3],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),4] = sum(TAB_6.4.2[11,2:4],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),5] = sum(TAB_6.4.2[11,2:5],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),6] = sum(TAB_6.4.2[11,2:6],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),7] = sum(TAB_6.4.2[11,2:7],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),8] = sum(TAB_6.4.2[11,2:8],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),9] = sum(TAB_6.4.2[11,2:9],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),10] = sum(TAB_6.4.2[11,2:10],na.rm=TRUE)
+TAB_6.4.3[nrow(TAB_6.4.3),11] = sum(TAB_6.4.2[11,2:11],na.rm=TRUE)
+TAB_6.4.3[10,3:11]=NA
+TAB_6.4.3[9,4:11]=NA
+TAB_6.4.3[8,5:11]=NA
+TAB_6.4.3[7,6:11]=NA
+TAB_6.4.3[6,7:11]=NA
+TAB_6.4.3[5,8:11]=NA
+TAB_6.4.3[4,9:11]=NA
+TAB_6.4.3[3,10:11]=NA
+TAB_6.4.3[2,11]=NA
+
+TAB_6.4.2[2:11] <- sapply(TAB_6.4.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.4.2$Month = format(TAB_6.4.2$Month, format = "%b-%y")
+TAB_6.4.2$Month[11] <- 'AVERAGE'
+TAB_6.4.3[2:11] <- sapply(TAB_6.4.3[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.4.3$Month = format(TAB_6.4.3$Month, format = "%b-%y")
+TAB_6.4.3$Month[11] <- 'AVERAGE'
+
+# TAB_6.5.1
+TAB_6.5.1 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[ medium == "REFERRALS"],na.rm=TRUE),
+  Month1 = sum(count[ medium == "REFERRALS" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_6.5.1[10,4:12]=NA
+TAB_6.5.1[9,5:12]=NA
+TAB_6.5.1[8,6:12]=NA
+TAB_6.5.1[7,7:12]=NA
+TAB_6.5.1[6,8:12]=NA
+TAB_6.5.1[5,9:12]=NA
+TAB_6.5.1[4,10:12]=NA
+TAB_6.5.1[3,11:12]=NA
+TAB_6.5.1[2,12]=NA
+TAB_6.5.1$Month = format(TAB_6.5.1$Month, format = "%b-%y")
+View(TAB_6.5.1)
+
+# TAB_6.5.2
+TAB_6.5.2 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "REFERRALS" & days_until_upgraded<30]/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "REFERRALS" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+))
+TAB_6.5.2[nrow(TAB_6.5.2)+ 1,2] = mean(TAB_6.5.2$Month1,na.rm=TRUE)
+TAB_6.5.2[nrow(TAB_6.5.2),3] = sum(TAB_6.5.2$Month2,na.rm=TRUE)/9
+TAB_6.5.2[nrow(TAB_6.5.2),4] = sum(TAB_6.5.2$Month3,na.rm=TRUE)/8
+TAB_6.5.2[nrow(TAB_6.5.2),5] = sum(TAB_6.5.2$Month4,na.rm=TRUE)/7
+TAB_6.5.2[nrow(TAB_6.5.2),6] = sum(TAB_6.5.2$Month5,na.rm=TRUE)/6
+TAB_6.5.2[nrow(TAB_6.5.2),7] = sum(TAB_6.5.2$Month6,na.rm=TRUE)/5
+TAB_6.5.2[nrow(TAB_6.5.2),8] = sum(TAB_6.5.2$Month7,na.rm=TRUE)/4
+TAB_6.5.2[nrow(TAB_6.5.2),9] = sum(TAB_6.5.2$Month8,na.rm=TRUE)/3
+TAB_6.5.2[nrow(TAB_6.5.2),10] = sum(TAB_6.5.2$Month9,na.rm=TRUE)/2
+TAB_6.5.2[nrow(TAB_6.5.2),11] = sum(TAB_6.5.2$Month10,na.rm=TRUE)/1
+TAB_6.5.2[10,3:11]=NA
+TAB_6.5.2[9,4:11]=NA
+TAB_6.5.2[8,5:11]=NA
+TAB_6.5.2[7,6:11]=NA
+TAB_6.5.2[6,7:11]=NA
+TAB_6.5.2[5,8:11]=NA
+TAB_6.5.2[4,9:11]=NA
+TAB_6.5.2[3,10:11]=NA
+TAB_6.5.2[2,11]=NA
+
+# TAB_6.5.3
+TAB_6.5.3 =as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[ medium == "REFERRALS" & days_until_upgraded<30]/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month2=sum(count[ medium == "REFERRALS" &   days_until_upgraded<60 & Month < '2015-11-01' ]/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month3=sum(count[ medium == "REFERRALS" &   days_until_upgraded<90 & Month < '2015-10-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month4=sum(count[ medium == "REFERRALS" &   days_until_upgraded<120 & Month < '2015-09-01' ]/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month5=sum(count[ medium == "REFERRALS" &   days_until_upgraded<150 & Month < '2015-08-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month6=sum(count[ medium == "REFERRALS" &   days_until_upgraded<180 & Month < '2015-07-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month7=sum(count[ medium == "REFERRALS" &   days_until_upgraded<210 & Month < '2015-06-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month8=sum(count[ medium == "REFERRALS" &   days_until_upgraded<240 & Month < '2015-05-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month9=sum(count[ medium == "REFERRALS" &   days_until_upgraded<270 & Month < '2015-04-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+  Month10=sum(count[ medium == "REFERRALS" &  days_until_upgraded<300 & Month < '2015-03-01']/sum(count[ medium == "REFERRALS"]),na.rm=TRUE),
+))
+TAB_6.5.3[nrow(TAB_6.5.3)+ 1,2] = sum(TAB_6.5.2[11,2],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),3] = sum(TAB_6.5.2[11,2:3],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),4] = sum(TAB_6.5.2[11,2:4],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),5] = sum(TAB_6.5.2[11,2:5],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),6] = sum(TAB_6.5.2[11,2:6],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),7] = sum(TAB_6.5.2[11,2:7],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),8] = sum(TAB_6.5.2[11,2:8],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),9] = sum(TAB_6.5.2[11,2:9],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),10] = sum(TAB_6.5.2[11,2:10],na.rm=TRUE)
+TAB_6.5.3[nrow(TAB_6.5.3),11] = sum(TAB_6.5.2[11,2:11],na.rm=TRUE)
+TAB_6.5.3[10,3:11]=NA
+TAB_6.5.3[9,4:11]=NA
+TAB_6.5.3[8,5:11]=NA
+TAB_6.5.3[7,6:11]=NA
+TAB_6.5.3[6,7:11]=NA
+TAB_6.5.3[5,8:11]=NA
+TAB_6.5.3[4,9:11]=NA
+TAB_6.5.3[3,10:11]=NA
+TAB_6.5.3[2,11]=NA
+
+TAB_6.5.2[2:11] <- sapply(TAB_6.5.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.5.2$Month = format(TAB_6.5.2$Month, format = "%b-%y")
+TAB_6.5.2$Month[11] <- 'AVERAGE'
+TAB_6.5.3[2:11] <- sapply(TAB_6.5.3[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_6.5.3$Month = format(TAB_6.5.3$Month, format = "%b-%y")
+TAB_6.5.3$Month[11] <- 'AVERAGE'
+
+# 7 Funnel By Paid Source (User)
+# TAB_7.1
+TAB_7.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  ad.com = sum(count[medium=="PAID" & source=="ad.com"],na.rm=TRUE),
+  bingAdCenter = sum(count[medium=="PAID" & source=="bingAdCenter"],na.rm=TRUE), 
+  Content.ad = sum(count[medium=="PAID" & source=="Content.ad"],na.rm=TRUE), 
+  Facebook= sum(count[medium=="PAID" & source=="Facebook"],na.rm=TRUE),  
+  GDN= sum(count[medium=="PAID" & (source=="gdn"| source=="GDN")],na.rm=TRUE),  
+  GoogleAdWords= sum(count[medium=="PAID" & source=="GoogleAdWords"],na.rm=TRUE),
+  linkedin.com= sum(count[medium=="PAID" & source=="linkedin.com"],na.rm=TRUE),
+  LiveIntent= sum(count[medium=="PAID" & source=="LiveIntent"],na.rm=TRUE), 
+  Outbrain= sum(count[medium=="PAID" & source=="Outbrain"],na.rm=TRUE),
+  Taboola= sum(count[medium=="PAID" & source=="Taboola"],na.rm=TRUE), 
+  twitter.com= sum(count[medium=="PAID" & source=="twitter.com"],na.rm=TRUE), 
+  youtube= sum(count[medium=="PAID" & source=="youtube"],na.rm=TRUE), 
+  Grand_Total = sum(count[medium=="PAID"],na.rm=TRUE)
+))
+TAB_7.1 = TAB_7.1[order(TAB_7.1$Month),]
+TAB_7.1$Month = format(TAB_7.1$Month, format = "%b-%y")
+TAB_7.1[nrow(TAB_7.1)+ 1,1] ="TOTAL"
+TAB_7.1[nrow(TAB_7.1),2]= sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),3] = sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),4] = sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),5]= sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),6]= sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN")],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),7]= sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),8]= sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),9]= sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),10]= sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),11]= sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),12]= sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),13]= sum(Users$count[Users$medium=="PAID" & Users$source=="youtube"],na.rm=TRUE)
+TAB_7.1[nrow(TAB_7.1),14]= sum(Users$count[Users$medium=="PAID"])
+
+# TAB_7.2
+TAB_7.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  ad.com = sum(count[medium=="PAID" & source=="ad.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="ad.com" & end_status=="1-activated"]),
+  bingAdCenter = sum(count[medium=="PAID" & source=="bingAdCenter" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="bingAdCenter" & end_status=="1-activated"]),
+  Content.ad = sum(count[medium=="PAID" & source=="Content.ad" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="Content.ad" & end_status=="1-activated"]),
+  Facebook = sum(count[medium=="PAID" & source=="Facebook" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="Facebook" & end_status=="1-activated"]),
+  GDN = sum(count[medium=="PAID" & source=="gdn" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & (source=="gdn"| source=="GDN") & end_status=="1-activated"]),
+  GoogleAdWords = sum(count[medium=="PAID" & source=="GoogleAdWords" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="GoogleAdWords" & end_status=="1-activated"]),
+  linkedin.com = sum(count[medium=="PAID" & source=="linkedin.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="linkedin.com" & end_status=="1-activated"]),
+  LiveIntent = sum(count[medium=="PAID" & source=="LiveIntent" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="LiveIntent" & end_status=="1-activated"]),
+  Outbrain = sum(count[medium=="PAID" & source=="Outbrain" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="Outbrain" & end_status=="1-activated"]),
+  Taboola = sum(count[medium=="PAID" & source=="Taboola" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="Taboola" & end_status=="1-activated"]),
+  twitter.com = sum(count[medium=="PAID" & source=="twitter.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="twitter.com" & end_status=="1-activated"]),
+  youtube = sum(count[medium=="PAID" & source=="youtube" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & source=="youtube" & end_status=="1-activated"]),
+  Grand_Total= sum(count[medium=="PAID" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+  +sum(count[medium=="PAID" & end_status=="1-activated"],na.rm=TRUE)
+))
+TAB_7.2 = TAB_7.2[order(TAB_7.2$Month),]
+TAB_7.2$Month = format(TAB_7.2$Month, format = "%b-%y")
+TAB_7.2[nrow(TAB_7.2)+ 1,1] ="TOTAL"
+TAB_7.2[nrow(TAB_7.2),2]= sum(Users$count[Users$medium=="PAID"& Users$source=="ad.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="ad.com" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),3] = sum(Users$count[Users$medium=="PAID"& Users$source=="bingAdCenter" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="bingAdCenter" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),4]= sum(Users$count[Users$medium=="PAID"& Users$source=="Content.ad" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="Content.ad" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),5] = sum(Users$count[Users$medium=="PAID"& Users$source=="Facebook" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="Facebook" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),6]= sum(Users$count[Users$medium=="PAID"& (Users$source=="gdn"| Users$source=="GDN") & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="gdn" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),7] = sum(Users$count[Users$medium=="PAID"& Users$source=="GoogleAdWords" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="GoogleAdWords" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),8] = sum(Users$count[Users$medium=="PAID"& Users$source=="linkedin.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="linkedin.com" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),9] = sum(Users$count[Users$medium=="PAID"& Users$source=="LiveIntent" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="LiveIntent" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),10] = sum(Users$count[Users$medium=="PAID"& Users$source=="Outbrain" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="Outbrain" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),11] = sum(Users$count[Users$medium=="PAID"& Users$source=="Taboola" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="Taboola" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),12] = sum(Users$count[Users$medium=="PAID"& Users$source=="twitter.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="twitter.com" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),13] = sum(Users$count[Users$medium=="PAID"& Users$source=="youtube" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$source=="youtube" & Users$end_status=="1-activated"],na.rm=TRUE)
+TAB_7.2[nrow(TAB_7.2),14] = sum(Users$count[Users$medium=="PAID"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)+sum(Users$count[Users$medium=="PAID"& Users$end_status=="1-activated"],na.rm=TRUE)
+
+# TAB_7.3
+TAB_7.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  ad.com = sum(count[medium=="PAID"& source=="ad.com" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  bingAdCenter = sum(count[medium=="PAID"& source=="bingAdCenter" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Content.ad = sum(count[medium=="PAID"& source=="Content.ad" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Facebook = sum(count[medium=="PAID"& source=="Facebook" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  GDN = sum(count[medium=="PAID"& (source=="gdn"| source=="GDN") & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  GoogleAdWords = sum(count[medium=="PAID"& source=="GoogleAdWords" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  linkedin.com = sum(count[medium=="PAID"& source=="linkedin.com" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  LiveIntent = sum(count[medium=="PAID"& source=="LiveIntent" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Outbrain = sum(count[medium=="PAID"& source=="Outbrain" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Taboola = sum(count[medium=="PAID"& source=="Taboola" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  twitter.com = sum(count[medium=="PAID"& source=="twitter.com" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  youtube = sum(count[medium=="PAID"& source=="youtube" & end_status=="2-activated-upgraded"],na.rm=TRUE),
+  Grand_Total = sum(count[medium=="PAID"& end_status=="2-activated-upgraded"],na.rm=TRUE)
+))
+TAB_7.3 = TAB_7.3[order(TAB_7.3$Month),]
+TAB_7.3$Month = format(TAB_7.3$Month, format = "%b-%y")
+TAB_7.3[nrow(TAB_7.3)+ 1,1]="TOTAL"
+TAB_7.3[nrow(TAB_7.3),2]= sum(Users$count[Users$medium=="PAID"& Users$source=="ad.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),3]= sum(Users$count[Users$medium=="PAID"& Users$source=="bingAdCenter"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),4]= sum(Users$count[Users$medium=="PAID"& Users$source=="Content.ad"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),5]= sum(Users$count[Users$medium=="PAID"& Users$source=="Facebook"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),6] = sum(Users$count[Users$medium=="PAID"& (Users$source=="gdn"| Users$source=="GDN")& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),7]= sum(Users$count[Users$medium=="PAID"& Users$source=="GoogleAdWords"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),8]= sum(Users$count[Users$medium=="PAID"& Users$source=="linkedin.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),9] = sum(Users$count[Users$medium=="PAID"& Users$source=="LiveIntent"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),10]= sum(Users$count[Users$medium=="PAID"& Users$source=="Outbrain"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),11] = sum(Users$count[Users$medium=="PAID"& Users$source=="Taboola"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),12]= sum(Users$count[Users$medium=="PAID"& Users$source=="twitter.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),13]= sum(Users$count[Users$medium=="PAID"& Users$source=="youtube"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+TAB_7.3[nrow(TAB_7.3),14] = sum(Users$count[Users$medium=="PAID"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+
+#8 Funnel By Paid Source (Conv%)
+# TAB_8.1
+TAB_8.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  ad.com = (sum(count[medium=="PAID" & source=="ad.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+            +sum(count[medium=="PAID" & source=="ad.com" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="ad.com"],na.rm=TRUE),
+  bingAdCenter = (sum(count[medium=="PAID" & source=="bingAdCenter" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                  +sum(count[medium=="PAID" & source=="bingAdCenter" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="bingAdCenter"],na.rm=TRUE),
+  Content.ad = (sum(count[medium=="PAID" & source=="Content.ad" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                +sum(count[medium=="PAID" & source=="Content.ad" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="Content.ad"],na.rm=TRUE),
+  Facebook = (sum(count[medium=="PAID" & source=="Facebook" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+              +sum(count[medium=="PAID" & source=="Facebook" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="Facebook"],na.rm=TRUE),
+  GDN = (sum(count[medium=="PAID" & (source=="gdn"| source=="GDN") & end_status=="2-activated-upgraded"],na.rm=TRUE)
+         +sum(count[medium=="PAID" & (source=="gdn"| source=="GDN") & end_status=="1-activated"]))/sum(count[medium=="PAID" & (source=="gdn"| source=="GDN")],na.rm=TRUE),
+  GoogleAdWords = (sum(count[medium=="PAID" & source=="GoogleAdWords" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                   +sum(count[medium=="PAID" & source=="GoogleAdWords" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="GoogleAdWords"],na.rm=TRUE),
+  linkedin.com = (sum(count[medium=="PAID" & source=="linkedin.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                  +sum(count[medium=="PAID" & source=="linkedin.com" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="linkedin.com"],na.rm=TRUE),
+  LiveIntent = (sum(count[medium=="PAID" & source=="LiveIntent" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                +sum(count[medium=="PAID" & source=="LiveIntent" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="LiveIntent"],na.rm=TRUE),
+  Outbrain = (sum(count[medium=="PAID" & source=="Outbrain" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+              +sum(count[medium=="PAID" & source=="Outbrain" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="Outbrain"],na.rm=TRUE),
+  Taboola = (sum(count[medium=="PAID" & source=="Taboola" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+             +sum(count[medium=="PAID" & source=="Taboola" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="Taboola"],na.rm=TRUE),
+  twitter.com = (sum(count[medium=="PAID" & source=="twitter.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                 +sum(count[medium=="PAID" & source=="twitter.com" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="twitter.com"],na.rm=TRUE),
+  youtube = (sum(count[medium=="PAID" & source=="youtube" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+             +sum(count[medium=="PAID" & source=="youtube" & end_status=="1-activated"]))/sum(count[medium=="PAID" & source=="youtube"],na.rm=TRUE),
+  Grand_Total =(sum(count[medium=="PAID" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+                +sum(count[medium=="PAID" & end_status=="1-activated"]))/sum(count[medium=="PAID"],na.rm=TRUE)
+))
+TAB_8.1 = TAB_8.1[order(TAB_8.1$Month),]
+TAB_8.1$Month = format(TAB_8.1$Month, format = "%b-%y")
+TAB_8.1[nrow(TAB_8.1)+ 1,1]="TOTAL"
+TAB_8.1[nrow(TAB_8.1),2]= (sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),3] = (sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                            +sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),4]= (sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),5]= (sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),6]= (sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN") & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN") & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN")],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),7]= (sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),8]= (sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),9]= (sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                           +sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),10]= (sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                            +sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),11]= (sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                            +sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),12]= (sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                            +sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),13]= (sum(Users$count[Users$medium=="PAID" & Users$source=="youtube" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                            +sum(Users$count[Users$medium=="PAID" & Users$source=="youtube" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID" & Users$source=="youtube"],na.rm=TRUE)
+TAB_8.1[nrow(TAB_8.1),14] =(sum(Users$count[Users$medium=="PAID" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+                            +sum(Users$count[Users$medium=="PAID" & Users$end_status=="1-activated"]))/sum(Users$count[Users$medium=="PAID"],na.rm=TRUE)
+TAB_8.1[2:14] <- sapply(TAB_8.1[2:14], function(x) percent(x,accuracy = 0.01))
+
+# TAB_8.2
+TAB_8.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  ad.com = sum(count[medium=="PAID"& source=="ad.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)/ 
+    (sum(count[medium=="PAID" & source=="ad.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="ad.com" & end_status=="1-activated"])),
+  bingAdCenter = sum(count[medium=="PAID"& source=="bingAdCenter" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="bingAdCenter" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="bingAdCenter" & end_status=="1-activated"])),
+  Content.ad = sum(count[medium=="PAID"& source=="Content.ad" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="Content.ad" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="Content.ad" & end_status=="1-activated"])),
+  Facebook = sum(count[medium=="PAID"& source=="Facebook" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="Facebook" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="Facebook" & end_status=="1-activated"])),
+  GDN = sum(count[medium=="PAID"& (source=="gdn"| source=="GDN") & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & (source=="gdn"| source=="GDN") & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & (source=="gdn"| source=="GDN") & end_status=="1-activated"])),
+  GoogleAdWords = sum(count[medium=="PAID"& source=="GoogleAdWords" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="GoogleAdWords" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="GoogleAdWords" & end_status=="1-activated"])),
+  linkedin.com = sum(count[medium=="PAID"& source=="linkedin.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="linkedin.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="linkedin.com" & end_status=="1-activated"])),
+  LiveIntent = sum(count[medium=="PAID"& source=="LiveIntent" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="LiveIntent" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="LiveIntent" & end_status=="1-activated"])),
+  Outbrain = sum(count[medium=="PAID"& source=="Outbrain" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="Outbrain" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="Outbrain" & end_status=="1-activated"])),
+  Taboola = sum(count[medium=="PAID"& source=="Taboola" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="Taboola" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="Taboola" & end_status=="1-activated"])),
+  twitter.com = sum(count[medium=="PAID"& source=="twitter.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="twitter.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="twitter.com" & end_status=="1-activated"])),
+  youtube = sum(count[medium=="PAID"& source=="youtube" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & source=="youtube" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & source=="youtube" & end_status=="1-activated"])),
+  Grand_Total = sum(count[medium=="PAID"& end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    (sum(count[medium=="PAID" & end_status=="2-activated-upgraded"],na.rm=TRUE)
+     +sum(count[medium=="PAID" & end_status=="1-activated"]))
+))
+TAB_8.2 = TAB_8.2[order(TAB_8.2$Month),]
+TAB_8.2$Month = format(TAB_8.2$Month, format = "%b-%y")
+TAB_8.2[nrow(TAB_8.2)+ 1,1]="TOTAL"
+TAB_8.2[nrow(TAB_8.2),2]= sum(Users$count[Users$medium=="PAID"& Users$source=="ad.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),3]= sum(Users$count[Users$medium=="PAID"& Users$source=="bingAdCenter"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),4]= sum(Users$count[Users$medium=="PAID"& Users$source=="Content.ad"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),5]= sum(Users$count[Users$medium=="PAID"& Users$source=="Facebook"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),6]= sum(Users$count[Users$medium=="PAID"& (Users$source=="gdn"| Users$source=="GDN")& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN") & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN") & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),7]= sum(Users$count[Users$medium=="PAID"& Users$source=="GoogleAdWords"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),8]= sum(Users$count[Users$medium=="PAID"& Users$source=="linkedin.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),9]= sum(Users$count[Users$medium=="PAID"& Users$source=="LiveIntent"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),10]= sum(Users$count[Users$medium=="PAID"& Users$source=="Outbrain"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),11] = sum(Users$count[Users$medium=="PAID"& Users$source=="Taboola"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),12] = sum(Users$count[Users$medium=="PAID"& Users$source=="twitter.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),13]= sum(Users$count[Users$medium=="PAID"& Users$source=="youtube"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$source=="youtube" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$source=="youtube" & Users$end_status=="1-activated"]))
+TAB_8.2[nrow(TAB_8.2),14]= sum(Users$count[Users$medium=="PAID"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  (sum(Users$count[Users$medium=="PAID" & Users$end_status=="2-activated-upgraded"],na.rm=TRUE)
+   +sum(Users$count[Users$medium=="PAID" & Users$end_status=="1-activated"]))
+TAB_8.2[2:14] <- sapply(TAB_8.2[2:14], function(x) percent(x,accuracy = 0.01))
+
+# TAB_8.3
+TAB_8.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  ad.com = sum(count[medium=="PAID"& source=="ad.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="ad.com"],na.rm=TRUE),
+  bingAdCenter = sum(count[medium=="PAID"& source=="bingAdCenter" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="bingAdCenter"],na.rm=TRUE),
+  Content.ad = sum(count[medium=="PAID"& source=="Content.ad" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="Content.ad"],na.rm=TRUE),
+  Facebook = sum(count[medium=="PAID"& source=="Facebook" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="Facebook"],na.rm=TRUE),
+  GDN = sum(count[medium=="PAID"& (source=="gdn"| source=="GDN") & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & (source=="gdn"| source=="GDN")],na.rm=TRUE),
+  GoogleAdWords = sum(count[medium=="PAID"& source=="GoogleAdWords" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="GoogleAdWords"],na.rm=TRUE),
+  linkedin.com = sum(count[medium=="PAID"& source=="linkedin.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="linkedin.com"],na.rm=TRUE),
+  LiveIntent = sum(count[medium=="PAID"& source=="LiveIntent" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="LiveIntent"],na.rm=TRUE),
+  Outbrain = sum(count[medium=="PAID"& source=="Outbrain" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="Outbrain"],na.rm=TRUE),
+  Taboola = sum(count[medium=="PAID"& source=="Taboola" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="Taboola"],na.rm=TRUE),
+  twitter.com = sum(count[medium=="PAID"& source=="twitter.com" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="twitter.com"],na.rm=TRUE),
+  youtube = sum(count[medium=="PAID"& source=="youtube" & end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID" & source=="youtube"],na.rm=TRUE),
+  Grand_Total = sum(count[medium=="PAID"& end_status=="2-activated-upgraded"],na.rm=TRUE)/
+    sum(count[medium=="PAID"],na.rm=TRUE)
+))
+TAB_8.3 = TAB_8.3[order(TAB_8.3$Month),]
+TAB_8.3$Month = format(TAB_8.3$Month, format = "%b-%y")
+TAB_8.3[nrow(TAB_8.3)+ 1,1]="TOTAL"
+TAB_8.3[nrow(TAB_8.3),2]= sum(Users$count[Users$medium=="PAID"& Users$source=="ad.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="ad.com"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),3]= sum(Users$count[Users$medium=="PAID"& Users$source=="bingAdCenter"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="bingAdCenter"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),4] = sum(Users$count[Users$medium=="PAID"& Users$source=="Content.ad"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="Content.ad"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),5] = sum(Users$count[Users$medium=="PAID"& Users$source=="Facebook"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="Facebook"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),6]= sum(Users$count[Users$medium=="PAID"& (Users$source=="gdn"| Users$source=="GDN")& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & (Users$source=="gdn"| Users$source=="GDN")],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),7]= sum(Users$count[Users$medium=="PAID"& Users$source=="GoogleAdWords"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="GoogleAdWords"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),8]= sum(Users$count[Users$medium=="PAID"& Users$source=="linkedin.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="linkedin.com"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),9]= sum(Users$count[Users$medium=="PAID"& Users$source=="LiveIntent"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="LiveIntent"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),10] = sum(Users$count[Users$medium=="PAID"& Users$source=="Outbrain"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="Outbrain"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),11] = sum(Users$count[Users$medium=="PAID"& Users$source=="Taboola"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="Taboola"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),12] = sum(Users$count[Users$medium=="PAID"& Users$source=="twitter.com"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="twitter.com"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),13] = sum(Users$count[Users$medium=="PAID"& Users$source=="youtube"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID" & Users$source=="youtube"],na.rm=TRUE)
+TAB_8.3[nrow(TAB_8.3),14] = sum(Users$count[Users$medium=="PAID"& Users$end_status=="2-activated-upgraded"],na.rm=TRUE)/
+  sum(Users$count[Users$medium=="PAID"],na.rm=TRUE)
+TAB_8.3[2:14] <- sapply(TAB_8.3[2:14], function(x) percent(x,accuracy = 0.01))
+
+# 9 Funnel Paid Source (Cohorts)
+# TAB_9.1.1
+TAB_9.1.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[source=="Facebook"&medium == "PAID"],na.rm=TRUE),
+  Month1 = sum(count[source=="Facebook"&medium == "PAID" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_9.1.1[10,4:12]=NA
+TAB_9.1.1[9,5:12]=NA
+TAB_9.1.1[8,6:12]=NA
+TAB_9.1.1[7,7:12]=NA
+TAB_9.1.1[6,8:12]=NA
+TAB_9.1.1[5,9:12]=NA
+TAB_9.1.1[4,10:12]=NA
+TAB_9.1.1[3,11:12]=NA
+TAB_9.1.1[2,12]=NA
+TAB_9.1.1$Month = format(TAB_9.1.1$Month, format = "%b-%y")
+
+# TAB_9.1.2
+TAB_9.1.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[source=="Facebook"&medium == "PAID" & days_until_upgraded<30]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+))
+TAB_9.1.2[nrow(TAB_9.1.2)+ 1,2] = mean(TAB_9.1.2$Month1,na.rm=TRUE)
+TAB_9.1.2[nrow(TAB_9.1.2),3] = sum(TAB_9.1.2$Month2,na.rm=TRUE)/9
+TAB_9.1.2[nrow(TAB_9.1.2),4] = sum(TAB_9.1.2$Month3,na.rm=TRUE)/8
+TAB_9.1.2[nrow(TAB_9.1.2),5] = sum(TAB_9.1.2$Month4,na.rm=TRUE)/7
+TAB_9.1.2[nrow(TAB_9.1.2),6] = sum(TAB_9.1.2$Month5,na.rm=TRUE)/6
+TAB_9.1.2[nrow(TAB_9.1.2),7] = sum(TAB_9.1.2$Month6,na.rm=TRUE)/5
+TAB_9.1.2[nrow(TAB_9.1.2),8] = sum(TAB_9.1.2$Month7,na.rm=TRUE)/4
+TAB_9.1.2[nrow(TAB_9.1.2),9] = sum(TAB_9.1.2$Month8,na.rm=TRUE)/3
+TAB_9.1.2[nrow(TAB_9.1.2),10] = sum(TAB_9.1.2$Month9,na.rm=TRUE)/2
+TAB_9.1.2[nrow(TAB_9.1.2),11] = sum(TAB_9.1.2$Month10,na.rm=TRUE)/1
+TAB_9.1.2[10,3:11]=NA
+TAB_9.1.2[9,4:11]=NA
+TAB_9.1.2[8,5:11]=NA
+TAB_9.1.2[7,6:11]=NA
+TAB_9.1.2[6,7:11]=NA
+TAB_9.1.2[5,8:11]=NA
+TAB_9.1.2[4,9:11]=NA
+TAB_9.1.2[3,10:11]=NA
+TAB_9.1.2[2,11]=NA
+
+# TAB_9.1.3
+TAB_9.1.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[source=="Facebook"&medium == "PAID" & days_until_upgraded<30]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[source=="Facebook"&medium == "PAID" & days_until_upgraded<60 & Month < '2015-11-01' ]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded<90 & Month < '2015-10-01' ]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[source=="Facebook"&medium == "PAID" & days_until_upgraded<120 & Month < '2015-09-01' ]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[source=="Facebook"&medium == "PAID" &   days_until_upgraded<150 & Month < '2015-08-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[source=="Facebook"&medium == "PAID" &   days_until_upgraded<180  & Month < '2015-07-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded<210  & Month < '2015-06-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded<240 & Month < '2015-05-01' ]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded<270  & Month < '2015-04-01']/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[source=="Facebook"&medium == "PAID" &  days_until_upgraded<300 & Month < '2015-03-01' ]/ sum(count[source=="Facebook"&medium == "PAID"]),na.rm=TRUE),
+))
+TAB_9.1.3[nrow(TAB_9.1.3)+ 1,2] = sum(TAB_9.1.2[11,2],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),3] = sum(TAB_9.1.2[11,2:3],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),4] = sum(TAB_9.1.2[11,2:4],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),5] = sum(TAB_9.1.2[11,2:5],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),6] = sum(TAB_9.1.2[11,2:6],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),7] = sum(TAB_9.1.2[11,2:7],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),8] = sum(TAB_9.1.2[11,2:8],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),9] = sum(TAB_9.1.2[11,2:9],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),10] = sum(TAB_9.1.2[11,2:10],na.rm=TRUE)
+TAB_9.1.3[nrow(TAB_9.1.3),11] = sum(TAB_9.1.2[11,2:11],na.rm=TRUE)
+TAB_9.1.3[10,3:11]=NA
+TAB_9.1.3[9,4:11]=NA
+TAB_9.1.3[8,5:11]=NA
+TAB_9.1.3[7,6:11]=NA
+TAB_9.1.3[6,7:11]=NA
+TAB_9.1.3[5,8:11]=NA
+TAB_9.1.3[4,9:11]=NA
+TAB_9.1.3[3,10:11]=NA
+TAB_9.1.3[2,11]=NA
+
+TAB_9.1.2[2:11] <- sapply(TAB_9.1.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_9.1.2$Month = format(TAB_9.1.2$Month, format = "%b-%y")
+TAB_9.1.2$Month[11] <- 'AVERAGE'
+TAB_9.1.3[2:11] <- sapply(TAB_9.1.3[2:11], function(x) percent(x,accuracy = 0.01)) 
+TAB_9.1.3$Month = format(TAB_9.1.3$Month, format = "%b-%y")
+TAB_9.1.3$Month[11] <- 'AVERAGE'
+
+# TAB_9.2.1
+TAB_9.2.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[source=="GoogleAdWords"&medium == "PAID"],na.rm=TRUE),
+  Month1 = sum(count[source=="GoogleAdWords"&medium == "PAID" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_9.2.1[10,4:12]=NA
+TAB_9.2.1[9,5:12]=NA
+TAB_9.2.1[8,6:12]=NA
+TAB_9.2.1[7,7:12]=NA
+TAB_9.2.1[6,8:12]=NA
+TAB_9.2.1[5,9:12]=NA
+TAB_9.2.1[4,10:12]=NA
+TAB_9.2.1[3,11:12]=NA
+TAB_9.2.1[2,12]=NA
+TAB_9.2.1$Month = format(TAB_9.2.1$Month, format = "%b-%y")
+
+# TAB_9.2.2
+TAB_9.2.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[source=="GoogleAdWords"&medium == "PAID" & days_until_upgraded<30]/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+))
+TAB_9.2.2[nrow(TAB_9.2.2)+ 1,2] = mean(TAB_9.2.2$Month1,na.rm=TRUE)
+TAB_9.2.2[nrow(TAB_9.2.2),3] = sum(TAB_9.2.2$Month2,na.rm=TRUE)/9
+TAB_9.2.2[nrow(TAB_9.2.2),4] = sum(TAB_9.2.2$Month3,na.rm=TRUE)/8
+TAB_9.2.2[nrow(TAB_9.2.2),5] = sum(TAB_9.2.2$Month4,na.rm=TRUE)/7
+TAB_9.2.2[nrow(TAB_9.2.2),6] = sum(TAB_9.2.2$Month5,na.rm=TRUE)/6
+TAB_9.2.2[nrow(TAB_9.2.2),7] = sum(TAB_9.2.2$Month6,na.rm=TRUE)/5
+TAB_9.2.2[nrow(TAB_9.2.2),8] = sum(TAB_9.2.2$Month7,na.rm=TRUE)/4
+TAB_9.2.2[nrow(TAB_9.2.2),9] = sum(TAB_9.2.2$Month8,na.rm=TRUE)/3
+TAB_9.2.2[nrow(TAB_9.2.2),10] = sum(TAB_9.2.2$Month9,na.rm=TRUE)/2
+TAB_9.2.2[nrow(TAB_9.2.2),11] = sum(TAB_9.2.2$Month10,na.rm=TRUE)/1
+TAB_9.2.2[10,3:11]=NA
+TAB_9.2.2[9,4:11]=NA
+TAB_9.2.2[8,5:11]=NA
+TAB_9.2.2[7,6:11]=NA
+TAB_9.2.2[6,7:11]=NA
+TAB_9.2.2[5,8:11]=NA
+TAB_9.2.2[4,9:11]=NA
+TAB_9.2.2[3,10:11]=NA
+TAB_9.2.2[2,11]=NA
+
+# TAB_9.2.3
+TAB_9.2.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[source=="GoogleAdWords"&medium == "PAID" & days_until_upgraded<30]/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[source=="GoogleAdWords"&medium == "PAID" &   days_until_upgraded<60 & Month < '2015-11-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[source=="GoogleAdWords"&medium == "PAID" & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded<120 & Month < '2015-09-01'  ]/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded<150 & Month < '2015-08-01' ]/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[source=="GoogleAdWords"&medium == "PAID" &   days_until_upgraded<180  & Month < '2015-07-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded<210 & Month < '2015-06-01' ]/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded<240 & Month < '2015-05-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[source=="GoogleAdWords"&medium == "PAID" &   days_until_upgraded<270  & Month < '2015-04-01']/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[source=="GoogleAdWords"&medium == "PAID" &  days_until_upgraded<300  & Month < '2015-03-01'  ]/sum(count[source=="GoogleAdWords"&medium == "PAID"]),na.rm=TRUE),
+))
+TAB_9.2.3[nrow(TAB_9.2.3)+ 1,2] = sum(TAB_9.2.2[11,2],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),3] = sum(TAB_9.2.2[11,2:3],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),4] = sum(TAB_9.2.2[11,2:4],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),5] = sum(TAB_9.2.2[11,2:5],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),6] = sum(TAB_9.2.2[11,2:6],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),7] = sum(TAB_9.2.2[11,2:7],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),8] = sum(TAB_9.2.2[11,2:8],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),9] = sum(TAB_9.2.2[11,2:9],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),10] = sum(TAB_9.2.2[11,2:10],na.rm=TRUE)
+TAB_9.2.3[nrow(TAB_9.2.3),11] = sum(TAB_9.2.2[11,2:11],na.rm=TRUE)
+TAB_9.2.3[10,3:11]=NA
+TAB_9.2.3[9,4:11]=NA
+TAB_9.2.3[8,5:11]=NA
+TAB_9.2.3[7,6:11]=NA
+TAB_9.2.3[6,7:11]=NA
+TAB_9.2.3[5,8:11]=NA
+TAB_9.2.3[4,9:11]=NA
+TAB_9.2.3[3,10:11]=NA
+TAB_9.2.3[2,11]=NA
+
+TAB_9.2.2[2:11] <- sapply(TAB_9.2.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_9.2.2$Month = format(TAB_9.2.2$Month, format = "%b-%y")
+TAB_9.2.2$Month[11] <- 'AVERAGE'
+TAB_9.2.3[2:11] <- sapply(TAB_9.2.3[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_9.2.3$Month = format(TAB_9.2.3$Month, format = "%b-%y")
+TAB_9.2.3$Month[11] <- 'AVERAGE'
+
+# TAB_9.3.1
+TAB_9.3.1=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Created = sum(count[source=="twitter.com"&medium == "PAID"],na.rm=TRUE),
+  Month1 = sum(count[source=="twitter.com"&medium == "PAID" & days_until_upgraded<30],na.rm=TRUE),
+  Month2=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01'],na.rm=TRUE),
+  Month3=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01'],na.rm=TRUE),
+  Month4=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01'],na.rm=TRUE),
+  Month5=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01'],na.rm=TRUE),
+  Month6=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01'],na.rm=TRUE),
+  Month7=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01'],na.rm=TRUE),
+  Month8=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01'],na.rm=TRUE),
+  Month9=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01'],na.rm=TRUE),
+  Month10=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month < '2015-03-01'],na.rm=TRUE),
+))
+TAB_9.3.1[10,4:12]=NA
+TAB_9.3.1[9,5:12]=NA
+TAB_9.3.1[8,6:12]=NA
+TAB_9.3.1[7,7:12]=NA
+TAB_9.3.1[6,8:12]=NA
+TAB_9.3.1[5,9:12]=NA
+TAB_9.3.1[4,10:12]=NA
+TAB_9.3.1[3,11:12]=NA
+TAB_9.3.1[2,12]=NA
+TAB_9.3.1$Month = format(TAB_9.3.1$Month, format = "%b-%y")
+
+# TAB_9.3.2
+TAB_9.3.2=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[source=="twitter.com"&medium == "PAID" & days_until_upgraded<30]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=30 & days_until_upgraded<60 & Month < '2015-11-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=60 & days_until_upgraded<90 & Month < '2015-10-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=90 & days_until_upgraded<120 & Month < '2015-09-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=120 & days_until_upgraded<150 & Month < '2015-08-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=150 & days_until_upgraded<180 & Month < '2015-07-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=180 & days_until_upgraded<210 & Month < '2015-06-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=210 & days_until_upgraded<240 & Month < '2015-05-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=240 & days_until_upgraded<270 & Month < '2015-04-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded>=270 & days_until_upgraded<300 & Month <= '2015-03-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+))
+TAB_9.3.2[nrow(TAB_9.3.2)+ 1,2] = mean(TAB_9.3.2$Month1,na.rm=TRUE)
+TAB_9.3.2[nrow(TAB_9.3.2),3] = sum(TAB_9.3.2$Month2,na.rm=TRUE)/9
+TAB_9.3.2[nrow(TAB_9.3.2),4] = sum(TAB_9.3.2$Month3,na.rm=TRUE)/8
+TAB_9.3.2[nrow(TAB_9.3.2),5] = sum(TAB_9.3.2$Month4,na.rm=TRUE)/7
+TAB_9.3.2[nrow(TAB_9.3.2),6] = sum(TAB_9.3.2$Month5,na.rm=TRUE)/6
+TAB_9.3.2[nrow(TAB_9.3.2),7] = sum(TAB_9.3.2$Month6,na.rm=TRUE)/5
+TAB_9.3.2[nrow(TAB_9.3.2),8] = sum(TAB_9.3.2$Month7,na.rm=TRUE)/4
+TAB_9.3.2[nrow(TAB_9.3.2),9] = sum(TAB_9.3.2$Month8,na.rm=TRUE)/3
+TAB_9.3.2[nrow(TAB_9.3.2),10] = sum(TAB_9.3.2$Month9,na.rm=TRUE)/2
+TAB_9.3.2[nrow(TAB_9.3.2),11] = sum(TAB_9.3.2$Month10,na.rm=TRUE)/1
+TAB_9.3.2[10,3:11]=NA
+TAB_9.3.2[9,4:11]=NA
+TAB_9.3.2[8,5:11]=NA
+TAB_9.3.2[7,6:11]=NA
+TAB_9.3.2[6,7:11]=NA
+TAB_9.3.2[5,8:11]=NA
+TAB_9.3.2[4,9:11]=NA
+TAB_9.3.2[3,10:11]=NA
+TAB_9.3.2[2,11]=NA
+
+# TAB_9.3.3
+TAB_9.3.3=as.data.frame(Users %>% group_by(Month=Users$create_month) %>% summarise(
+  Month1 = sum(count[source=="twitter.com"&medium == "PAID" & days_until_upgraded<30 ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month2=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded<60 & Month < '2015-11-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month3=sum(count[source=="twitter.com"&medium == "PAID" &   days_until_upgraded<90 & Month < '2015-10-01' ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month4=sum(count[source=="twitter.com"&medium == "PAID" &   days_until_upgraded<120 & Month < '2015-09-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month5=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded<150 & Month < '2015-08-01' ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month6=sum(count[source=="twitter.com"&medium == "PAID" &   days_until_upgraded<180  & Month < '2015-07-01']/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month7=sum(count[source=="twitter.com"&medium == "PAID" &  days_until_upgraded<210  & Month < '2015-06-01' ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month8=sum(count[source=="twitter.com"&medium == "PAID" &   days_until_upgraded<240 & Month < '2015-05-01' ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month9=sum(count[source=="twitter.com"&medium == "PAID" &   days_until_upgraded<270 & Month < '2015-04-01' ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+  Month10=sum(count[source=="twitter.com"&medium == "PAID" &   days_until_upgraded<300  & Month <= '2015-03-01' ]/sum(count[source=="twitter.com"&medium == "PAID"]),na.rm=TRUE),
+))
+TAB_9.3.3[nrow(TAB_9.3.3)+ 1,2] = sum(TAB_9.3.2[11,2],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),3] = sum(TAB_9.3.2[11,2:3],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),4] = sum(TAB_9.3.2[11,2:4],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),5] = sum(TAB_9.3.2[11,2:5],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),6] = sum(TAB_9.3.2[11,2:6],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),7] = sum(TAB_9.3.2[11,2:7],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),8] = sum(TAB_9.3.2[11,2:8],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),9] = sum(TAB_9.3.2[11,2:9],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),10] = sum(TAB_9.3.2[11,2:10],na.rm=TRUE)
+TAB_9.3.3[nrow(TAB_9.3.3),11] = sum(TAB_9.3.2[11,2:11],na.rm=TRUE)
+TAB_9.3.3[10,3:11]=NA
+TAB_9.3.3[9,4:11]=NA
+TAB_9.3.3[8,5:11]=NA
+TAB_9.3.3[7,6:11]=NA
+TAB_9.3.3[6,7:11]=NA
+TAB_9.3.3[5,8:11]=NA
+TAB_9.3.3[4,9:11]=NA
+TAB_9.3.3[3,10:11]=NA
+TAB_9.3.3[2,11]=NA
+
+TAB_9.3.2[2:11] <- sapply(TAB_9.3.2[2:11], function(x) percent(x,accuracy = 0.01))
+TAB_9.3.2$Month = format(TAB_9.3.2$Month, format = "%b-%y")
+TAB_9.3.2$Month[11] <- 'AVERAGE'
+TAB_9.3.3[2:11] <- sapply(TAB_9.3.3[2:11], function(x) percent(x,accuracy = 0.01)) 
+TAB_9.3.3$Month = format(TAB_9.3.3$Month, format = "%b-%y")
+TAB_9.3.3$Month[11] <- 'AVERAGE'
+
+# 10 CAC by Paid Source
+TAB_10 = Spend %>% group_by(Month) %>% 
+  summarise(ad.com = sum(Spend[Source == "ad.com"],na.rm = TRUE),
+            bingAdCenter = sum(Spend[Source == "bing adCenter"],na.rm = TRUE),
+            Content.ad=  sum(Spend[Source == "Content.ad"],na.rm = TRUE),
+            Facebook = sum(Spend[Source == "Facebook"],na.rm = TRUE),
+            GDN = sum(Spend[Source == "GDN"],na.rm = TRUE),
+            GoogleAdWords =sum(Spend[Source == "Google AdWords"],na.rm = TRUE),
+            linkedin.com =  sum(Spend[Source == "LinkedIn"],na.rm = TRUE),
+            LiveIntent = sum(Spend[Source == "LiveIntent"],na.rm = TRUE),
+            Outbrain =  sum(Spend[Source == "Outbrain"],na.rm = TRUE),
+            Taboola = sum(Spend[Source == "Taboola"],na.rm = TRUE),
+            twitter.com = sum(Spend[Source == "Twitter"],na.rm = TRUE),
+            youtube = sum(Spend[Source == "YouTube"],na.rm = TRUE),
+            Grand_Total = sum(Spend,na.rm = TRUE)
+  )
+TAB_10 = TAB_10[order(match(TAB_10$Month, month.name)),] 
+
+# TAB_10.1
+TAB_10.1 = TAB_10[1:10,]
+TAB_10.1[11,1]<-"TOTAL"
+TAB_10.1[11,2:ncol(TAB_10.1)]<- t(colSums(TAB_10[1:10,2:ncol(TAB_10)]))
+TAB_10.1[TAB_10.1[,2]==0,2]<-NA 
+TAB_10.1[TAB_10.1[,3]==0,3]<-NA 
+TAB_10.1[TAB_10.1[,4]==0,4]<-NA 
+TAB_10.1[TAB_10.1[,5]==0,5]<-NA 
+TAB_10.1[TAB_10.1[,6]==0,6]<-NA 
+TAB_10.1[TAB_10.1[,7]==0,7]<-NA 
+TAB_10.1[TAB_10.1[,8]==0,8]<-NA 
+TAB_10.1[TAB_10.1[,9]==0,9]<-NA 
+TAB_10.1[TAB_10.1[,10]==0,10]<-NA 
+TAB_10.1[TAB_10.1[,11]==0,11]<-NA 
+TAB_10.1[TAB_10.1[,12]==0,12]<-NA 
+TAB_10.1[TAB_10.1[,13]==0,13]<-NA 
+TAB_10.1$Month[TAB_10.1$Month=="February"]="Feb-15"
+TAB_10.1$Month[TAB_10.1$Month=="March"]="Mar-15"
+TAB_10.1$Month[TAB_10.1$Month=="April"]="Apr-15"
+TAB_10.1$Month[TAB_10.1$Month=="May"]="May-15"
+TAB_10.1$Month[TAB_10.1$Month=="June"]="Jun-15"
+TAB_10.1$Month[TAB_10.1$Month=="July"]="Jul-15"
+TAB_10.1$Month[TAB_10.1$Month=="August"]="Aug-15"
+TAB_10.1$Month[TAB_10.1$Month=="September"]="Sep-15"
+TAB_10.1$Month[TAB_10.1$Month=="October"]="Oct-15"
+TAB_10.1$Month[TAB_10.1$Month=="November"]="Nov-15"
+
+# TAB_10.2
+TAB_10.2 = cbind(TAB_10.1[1],as.numeric(unlist(TAB_10.1[-1]))/TAB_7.1[-1],na.rm = TRUE)
+TAB_10.2 =TAB_10.2 [,1:14]
+TAB_10.2 <- do.call(data.frame,                    
+                    lapply(TAB_10.2,
+                           function(x) replace(x, is.infinite(x), NA)))
+TAB_10.2[10,14]=0
+TAB_10.2[3:4,12]=0
+TAB_10.2[10,12]=0
+TAB_10.2[6,11]=0
+TAB_10.2[5:8,9]=0
+TAB_10.2[11,9]=0
+TAB_10.2[4,8]=0
+TAB_10.2[10,7]=0
+TAB_10.2[10,5]=0
+TAB_10.2[7,4]=0
+TAB_10.2[1:4,3]=0
+TAB_10.2[8,2]=0
+
+# TAB_10.3
+TAB_10.3= cbind(TAB_10.1[1],as.numeric(unlist(TAB_10.1[-1]))/TAB_7.3[-1],na.rm = TRUE)
+TAB_10.3 =TAB_10.3[,1:14]
+TAB_10.3 <- do.call(data.frame,                    
+                    lapply(TAB_10.3,
+                           function(x) replace(x, is.infinite(x), NA)))
+TAB_10.3[10,14]=NA
+TAB_10.3[3,12]=0
+TAB_10.3[6,11]=0
+TAB_10.3[5,9]=0
+TAB_10.3[11,9]=0
+TAB_10.3[1:3,3]=0
+
+# Print into Excel
+OP=createWorkbook("BUMK747_Group_I_20220415")
+addWorksheet(OP, "1 Funnel By Month (Users)")
+addWorksheet(OP, "2 Funnel By Month (Conv%)")
+addWorksheet(OP, "3 Funnel By Month (Cohorts)")
+addWorksheet(OP, "4 Funnel By Medium (Users)")
+addWorksheet(OP, "5 Funnel By Medium (Conv%)")
+addWorksheet(OP, "6 Funnel By Medium (Cohorts)")
+addWorksheet(OP, "7 Funnel By Paid Source (Users)")
+addWorksheet(OP, "8 Funnel By Paid Source (Conv%)")
+addWorksheet(OP, "9 Funnel Paid Source (Cohorts)")
+addWorksheet(OP, "10 CAC by Paid Source")
+addWorksheet(OP, "11 (RAW DATA) User Data")
+addWorksheet(OP, "12 (RAW DATA) Spend Data")
+writeDataTable(OP,sheet="1 Funnel By Month (Users)",TAB_1)
+writeDataTable(OP,sheet="2 Funnel By Month (Conv%)",TAB_2)
+writeDataTable(OP,sheet="3 Funnel By Month (Cohorts)",TAB_3.1) 
+writeDataTable(OP,sheet="3 Funnel By Month (Cohorts)",TAB_3.2,startCol = 14) 
+writeDataTable(OP,sheet="3 Funnel By Month (Cohorts)",TAB_3.3,startCol = 26) 
+writeDataTable(OP,sheet="4 Funnel By Medium (Users)",TAB_4.1)
+writeDataTable(OP,sheet="4 Funnel By Medium (Users)",TAB_4.2,startRow = 18)
+writeDataTable(OP,sheet="4 Funnel By Medium (Users)",TAB_4.3,startRow = 33)
+writeDataTable(OP,sheet="5 Funnel By Medium (Conv%)",TAB_5.1)
+writeDataTable(OP,sheet="5 Funnel By Medium (Conv%)",TAB_5.2,startRow = 18)
+writeDataTable(OP,sheet="5 Funnel By Medium (Conv%)",TAB_5.3,startRow = 33)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.1.1)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.2.1,startRow = 30)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.3.1,startRow = 50)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.4.1,startRow = 70)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.5.1,startRow = 89)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.1.2,startCol = 14)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.2.2,startRow = 30,startCol = 14)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.3.2,startRow = 50,startCol =  14)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.4.2,startRow = 70,startCol =  14)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.5.2,startRow = 89,startCol =  14)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.1.3,startCol = 26)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.2.3,startRow = 30,startCol = 26)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.3.3,startRow = 50,startCol = 26)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.4.3,startRow = 70,startCol = 26)
+writeDataTable(OP,sheet="6 Funnel By Medium (Cohorts)",TAB_6.5.3,startRow = 89,startCol = 26)
+writeDataTable(OP,sheet="7 Funnel By Paid Source (Users)",TAB_7.1)
+writeDataTable(OP,sheet="7 Funnel By Paid Source (Users)",TAB_7.2,startRow = 18)
+writeDataTable(OP,sheet="7 Funnel By Paid Source (Users)",TAB_7.3,startRow = 33)
+writeDataTable(OP,sheet="8 Funnel By Paid Source (Conv%)",TAB_8.1)
+writeDataTable(OP,sheet="8 Funnel By Paid Source (Conv%)",TAB_8.2,startRow = 18)
+writeDataTable(OP,sheet="8 Funnel By Paid Source (Conv%)",TAB_8.3,startRow = 33)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.1.1)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.2.1,startRow = 30)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.3.1,startRow = 50)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.1.2,startCol = 14)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.2.2,startRow = 30,startCol = 14)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.3.2,startRow = 50,startCol =  14)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.1.3,startCol = 26)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.2.3,startRow = 30,startCol = 26)
+writeDataTable(OP,sheet="9 Funnel Paid Source (Cohorts)",TAB_9.3.3,startRow = 50,startCol = 26)
+writeDataTable(OP,sheet="10 CAC by Paid Source",TAB_10.1)
+writeDataTable(OP,sheet="10 CAC by Paid Source",TAB_10.2,startRow = 18)
+writeDataTable(OP,sheet="10 CAC by Paid Source",TAB_10.3,startRow = 33)
+writeDataTable(OP,sheet="11 (RAW DATA) User Data",User_bak)
+writeDataTable(OP,sheet="12 (RAW DATA) Spend Data",Spend_bak)
+saveWorkbook(OP, file="BUMK747_Group_I_20220415.xlsx", overwrite = FALSE)
